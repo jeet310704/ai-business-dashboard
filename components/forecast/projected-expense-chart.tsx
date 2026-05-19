@@ -27,7 +27,7 @@ interface ProjectedExpenseChartProps {
 
 export function ProjectedExpenseChart({ data }: ProjectedExpenseChartProps) {
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={chartMargin}>
         <CartesianGrid {...chartGridProps} />
         <XAxis dataKey="name" {...chartAxisProps} />

@@ -23,8 +23,8 @@ export function Topbar({ onMenuClick, title = "Dashboard" }: TopbarProps) {
       </Button>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <h1 className="truncate text-lg font-semibold tracking-tight">{title}</h1>
-        <p className="hidden text-xs text-muted-foreground sm:block">
+        <h1 className="truncate text-xl font-semibold tracking-tight">{title}</h1>
+        <p className="hidden text-sm text-muted-foreground sm:block">
           Overview of your business performance
         </p>
       </div>

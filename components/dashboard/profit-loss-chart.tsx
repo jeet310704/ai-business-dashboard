@@ -19,7 +19,7 @@ interface ProfitLossChartProps {
 
 export function ProfitLossChart({ data }: ProfitLossChartProps) {
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.26 0.015 260)" vertical={false} />
         <XAxis
