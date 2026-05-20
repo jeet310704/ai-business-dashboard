@@ -45,8 +45,30 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       return;
     }
 
-    router.push("/dashboard");
-    router.refresh();
+    const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+if (!user) {
+  router.push("/login");
+  router.refresh();
+  return;
+}
+
+const { data: business } = await supabase
+  .from("businesses")
+  .select("id")
+  .eq("owner_id", user.id)
+  .limit(1)
+  .maybeSingle();
+
+if (business) {
+  router.push("/dashboard");
+} else {
+  router.push("/onboarding");
+}
+
+router.refresh();
   }
 
   return (
