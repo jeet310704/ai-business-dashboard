@@ -1,5 +1,4 @@
-import { requireUser } from "@/lib/auth";
-
+import { LogoutButton } from "@/components/auth/logout-button";
 import { ChartCard } from "@/components/dashboard/chart-card";
 import { CustomerGrowthChart } from "@/components/dashboard/customer-growth-chart";
 import { InventorySummary } from "@/components/dashboard/inventory-summary";
@@ -8,6 +7,7 @@ import { MonthlySummarySection } from "@/components/dashboard/monthly-summary";
 import { ProfitLossChart } from "@/components/dashboard/profit-loss-chart";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import { requireUser } from "@/lib/auth";
 import {
   customerGrowthChartData,
   inventoryItems,
@@ -23,6 +23,17 @@ export default async function DashboardPage() {
   return (
     <DashboardShell title="Dashboard">
       <div className="space-y-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm text-zinc-400">Overview</p>
+            <h2 className="text-xl font-semibold text-white">
+              Business performance snapshot
+            </h2>
+          </div>
+
+          <LogoutButton />
+        </div>
+
         <section>
           <h2 className="sr-only">Key metrics</h2>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -33,18 +44,29 @@ export default async function DashboardPage() {
         </section>
 
         <section className="grid gap-4 xl:grid-cols-2">
-          <ChartCard title="Revenue" description="Monthly revenue over the past 12 months">
+          <ChartCard
+            title="Revenue"
+            description="Monthly revenue over the past 12 months"
+          >
             <RevenueChart data={revenueChartData} />
           </ChartCard>
-          <ChartCard title="Profit & Loss" description="Monthly profit vs loss trends">
+
+          <ChartCard
+            title="Profit & Loss"
+            description="Monthly profit vs loss trends"
+          >
             <ProfitLossChart data={profitLossChartData} />
           </ChartCard>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-2">
-          <ChartCard title="Customer Growth" description="Total and new customers per month">
+          <ChartCard
+            title="Customer Growth"
+            description="Total and new customers per month"
+          >
             <CustomerGrowthChart data={customerGrowthChartData} />
           </ChartCard>
+
           <InventorySummary items={inventoryItems} />
         </section>
 
