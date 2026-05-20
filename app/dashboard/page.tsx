@@ -1,3 +1,5 @@
+import { requireUser } from "@/lib/auth";
+
 import { ChartCard } from "@/components/dashboard/chart-card";
 import { CustomerGrowthChart } from "@/components/dashboard/customer-growth-chart";
 import { InventorySummary } from "@/components/dashboard/inventory-summary";
@@ -15,7 +17,9 @@ import {
   revenueChartData,
 } from "@/lib/mock-data";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  await requireUser();
+
   return (
     <DashboardShell title="Dashboard">
       <div className="space-y-6">

@@ -1,9 +1,12 @@
+import { requireUser } from "@/lib/auth";
 import { UploadDropzone } from "@/components/uploads/upload-dropzone";
 import { UploadHistory } from "@/components/uploads/upload-history";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { supportedUploadFormats, uploadHistory } from "@/lib/mock-data";
 
-export default function UploadsPage() {
+export default async function UploadsPage() {
+  await requireUser();
+
   return (
     <DashboardShell title="Uploads">
       <div className="space-y-8">

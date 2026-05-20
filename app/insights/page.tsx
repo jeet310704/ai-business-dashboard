@@ -1,9 +1,11 @@
+import { requireUser } from "@/lib/auth";
 import { InsightCard } from "@/components/insights/insight-card";
 import { RecommendationsList } from "@/components/insights/recommendations-list";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { insights, recommendations } from "@/lib/mock-data";
 
-export default function InsightsPage() {
+export default async function InsightsPage() {
+  await requireUser();
   const highPriority = insights.filter((i) => i.priority === "high");
   const otherInsights = insights.filter((i) => i.priority !== "high");
 

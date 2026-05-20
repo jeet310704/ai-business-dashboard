@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth";
 import { ChartCard } from "@/components/dashboard/chart-card";
 import { ForecastSummaryCards } from "@/components/forecast/forecast-summary-cards";
 import { PredictedCustomersChart } from "@/components/forecast/predicted-customers-chart";
@@ -11,7 +12,9 @@ import {
   projectedRevenueData,
 } from "@/lib/mock-data";
 
-export default function ForecastPage() {
+export default async function ForecastPage() {
+  await requireUser();
+
   return (
     <DashboardShell title="Forecast">
       <div className="space-y-6">

@@ -1,10 +1,12 @@
+import { requireUser } from "@/lib/auth";
 import { ReportCard } from "@/components/reports/report-card";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { reports } from "@/lib/mock-data";
 import { formatCurrency } from "@/lib/utils";
 
-export default function ReportsPage() {
+export default async function ReportsPage() {
+  await requireUser();
   const readyCount = reports.filter((r) => r.status === "ready").length;
 
   return (

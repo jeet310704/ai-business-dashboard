@@ -1,3 +1,4 @@
+import { requireUser } from "@/lib/auth";
 import { AppearanceSettings } from "@/components/settings/appearance-settings";
 import { BillingSettings } from "@/components/settings/billing-settings";
 import { BusinessSettings } from "@/components/settings/business-settings";
@@ -11,7 +12,9 @@ import {
   userProfile,
 } from "@/lib/mock-data";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  await requireUser();
+
   return (
     <DashboardShell title="Settings">
       <div className="mx-auto max-w-4xl space-y-6">
