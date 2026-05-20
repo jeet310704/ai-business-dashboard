@@ -13,6 +13,7 @@ const statusConfig: Record<
   UploadFileStatus,
   { label: string; variant: "success" | "warning" | "destructive" | "secondary" | "default" }
 > = {
+  uploaded: { label: "Uploaded", variant: "default" },
   completed: { label: "Completed", variant: "success" },
   processing: { label: "Processing", variant: "warning" },
   failed: { label: "Failed", variant: "destructive" },

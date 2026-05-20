@@ -37,7 +37,7 @@ export type MonthlySummary = {
 };
 
 // Uploads
-export type UploadFileStatus = "completed" | "processing" | "failed" | "queued";
+export type UploadFileStatus = "uploaded" | "completed" | "processing" | "failed" | "queued";
 export type UploadFileType = "csv" | "xlsx";
 
 export type UploadHistoryItem = {

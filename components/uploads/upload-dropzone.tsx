@@ -1,47 +1,204 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { FileSpreadsheet, FileText, Upload } from "lucide-react";
-import type { SupportedUploadFormat } from "@/types";
+import { createClient } from "@/lib/supabase/client";
+import Papa from "papaparse";
+import type { SupportedUploadFormat, UploadFileType } from "@/types";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 
 interface UploadDropzoneProps {
   formats: SupportedUploadFormat[];
+  businessId: string;
+  userId: string;
 }
 
-export function UploadDropzone({ formats }: UploadDropzoneProps) {
+export function UploadDropzone({ formats, businessId, userId }: UploadDropzoneProps) {
+  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [mockUploading, setMockUploading] = useState(false);
-  const [mockProgress, setMockProgress] = useState(0);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [currentFileName, setCurrentFileName] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
-  const handleMockUpload = useCallback(() => {
-    if (mockUploading) return;
-    setMockUploading(true);
-    setMockProgress(0);
-    const interval = setInterval(() => {
-      setMockProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setMockUploading(false);
-            setMockProgress(0);
-          }, 800);
-          return 100;
+  const acceptedFileTypes = formats.map((format) => format.extensions).join(",");
+
+  const resetUploadState = useCallback(() => {
+    setUploading(false);
+    setProgress(0);
+    setCurrentFileName(null);
+  }, []);
+
+  const handleUpload = useCallback(
+    async (file: File) => {
+      if (uploading) return;
+
+      const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+      if (!["csv", "xlsx", "xls"].includes(extension)) {
+        setErrorMessage("Only CSV and Excel files are supported.");
+        return;
+      }
+
+      const fileType: UploadFileType = extension === "csv" ? "csv" : "xlsx";
+      const storagePath = `${businessId}/${userId}/${Date.now()}-${file.name}`;
+      const supabase = createClient();
+
+      setUploading(true);
+      setCurrentFileName(file.name);
+      setErrorMessage("");
+      setSuccessMessage("");
+      setProgress(10);
+
+      const { error: uploadError } = await supabase.storage
+        .from("business-uploads")
+        .upload(storagePath, file, { upsert: false });
+
+      if (uploadError) {
+        setErrorMessage(uploadError.message || "File upload failed.");
+        resetUploadState();
+        return;
+      }
+
+      setProgress(40);
+
+      // Insert an uploads row and get the id back
+      const {
+        data: insertData,
+        error: insertError,
+      } = await supabase
+        .from("uploads")
+        .insert({
+          business_id: businessId,
+          file_name: file.name,
+          file_type: fileType,
+          uploaded_at: new Date().toISOString(),
+          status: "uploaded",
+        })
+        .select("id")
+        .single();
+
+      if (insertError || !insertData) {
+        setErrorMessage(insertError?.message || "Failed to save upload record.");
+        resetUploadState();
+        return;
+      }
+
+      const uploadId = insertData.id;
+
+      // Mark as processing
+      await supabase.from("uploads").update({ status: "processing" }).eq("id", uploadId);
+
+      setProgress(60);
+
+      // Only parse CSV for now
+      if (extension === "csv") {
+        try {
+          const parseResult = await new Promise<Papa.ParseResult<Record<string, unknown>>>((resolve, reject) => {
+            Papa.parse<Record<string, unknown>>(file, {
+              header: true,
+              dynamicTyping: true,
+              skipEmptyLines: true,
+              complete: (res: Papa.ParseResult<Record<string, unknown>>) => resolve(res),
+              error: (err) => reject(err),
+            });
+          });
+
+          const rows = Array.isArray(parseResult.data) ? parseResult.data : [];
+          const toInsert: Record<string, unknown>[] = [];
+
+          for (const r of rows) {
+            const dateRaw = String(r["date"] ?? "").trim();
+            const product = String(r["product"] ?? "").trim();
+            const category = String(r["category"] ?? "").trim();
+            const quantityRaw = r["quantity"];
+            const revenueRaw = r["revenue"];
+
+            const dateObj = new Date(dateRaw);
+            const quantity = Number(quantityRaw);
+            const revenue = Number(revenueRaw);
+
+            if (!dateRaw || isNaN(dateObj.getTime()) || !product || !category || isNaN(quantity) || isNaN(revenue)) {
+              // skip invalid row
+              continue;
+            }
+
+            toInsert.push({
+              business_id: businessId,
+              upload_id: uploadId,
+              product_name: product,
+              category,
+              quantity: Math.floor(quantity),
+              revenue,
+              sale_date: dateObj.toISOString(),
+            });
+          }
+
+          if (toInsert.length > 0) {
+            const { error: insertSalesError } = await supabase.from("sales_records").insert(toInsert);
+            if (insertSalesError) {
+              await supabase.from("uploads").update({ status: "failed" }).eq("id", uploadId);
+              setErrorMessage(insertSalesError.message || "Failed to insert sales records.");
+              resetUploadState();
+              return;
+            }
+
+            // Update uploads row with completed status
+            await supabase.from("uploads").update({ status: "completed" }).eq("id", uploadId);
+            setSuccessMessage(`Uploaded ${toInsert.length} sales rows from ${file.name}`);
+          } else {
+            // No valid rows found
+            await supabase.from("uploads").update({ status: "failed" }).eq("id", uploadId);
+            setErrorMessage("No valid sales rows found in CSV.");
+            resetUploadState();
+            return;
+          }
+        } catch (err: any) {
+          await supabase.from("uploads").update({ status: "failed" }).eq("id", uploadId);
+          setErrorMessage(err?.message || "CSV parsing failed.");
+          resetUploadState();
+          return;
         }
-        return prev + 12;
-      });
-    }, 200);
-  }, [mockUploading]);
+      }
+
+      setProgress(100);
+      // Refresh immediately so server component shows new history
+      router.refresh();
+      setTimeout(() => {
+        resetUploadState();
+      }, 600);
+    },
+    [businessId, router, resetUploadState, uploading, userId]
+  );
+
+  const handleFiles = useCallback(
+    (files: FileList | null) => {
+      const file = files?.[0];
+      if (file) {
+        handleUpload(file);
+      }
+    },
+    [handleUpload]
+  );
 
   return (
     <div className="space-y-6">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={acceptedFileTypes}
+        className="hidden"
+        onChange={(event) => handleFiles(event.target.files)}
+      />
       <Card
         className={cn(
           "border-dashed transition-colors",
           isDragging && "border-primary bg-primary/5",
-          mockUploading && "border-primary/50"
+          uploading && "border-primary/50"
         )}
         onDragOver={(e) => {
           e.preventDefault();
@@ -51,7 +208,7 @@ export function UploadDropzone({ formats }: UploadDropzoneProps) {
         onDrop={(e) => {
           e.preventDefault();
           setIsDragging(false);
-          handleMockUpload();
+          handleFiles(e.dataTransfer.files);
         }}
       >
         <CardContent className="flex flex-col items-center justify-center px-6 py-12">
@@ -64,20 +221,28 @@ export function UploadDropzone({ formats }: UploadDropzoneProps) {
           </p>
           <button
             type="button"
-            onClick={handleMockUpload}
-            disabled={mockUploading}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
             className="mt-6 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >
-            {mockUploading ? "Uploading..." : "Browse files"}
+            {uploading ? "Uploading..." : "Browse files"}
           </button>
-          {mockUploading && (
+
+          {currentFileName && (
             <div className="mt-6 w-full max-w-xs space-y-2">
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>sample_data.csv</span>
-                <span>{mockProgress}%</span>
+                <span>{currentFileName}</span>
+                <span>{progress}%</span>
               </div>
-              <Progress value={mockProgress} />
+              <Progress value={progress} />
             </div>
+          )}
+
+          {errorMessage && (
+            <p className="mt-4 text-sm text-destructive">{errorMessage}</p>
+          )}
+          {successMessage && (
+            <p className="mt-4 text-sm text-emerald-600">{successMessage}</p>
           )}
         </CardContent>
       </Card>
