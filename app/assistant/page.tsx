@@ -56,10 +56,10 @@ export default async function AssistantPage() {
       .from("expense_records")
       .select("amount")
       .eq("business_id", business.id),
-    supabase
-      .from("inventory_records")
-      .select("product_name, stock, reorder_level")
-      .eq("business_id", business.id),
+      supabase
+        .from("inventory_records")
+        .select("id, item_name, stock, reorder_level, unit_cost")
+        .eq("business_id", business.id),
     supabase
       .from("customer_records")
       .select("customer_name, total_spent")

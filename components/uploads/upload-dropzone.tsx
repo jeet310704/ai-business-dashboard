@@ -163,7 +163,7 @@ export function UploadDropzone({ formats, businessId, userId }: UploadDropzonePr
               toInsert.push({
                 business_id: businessId,
                 upload_id: uploadId,
-                expense_category: category,
+                category: category,
                 amount,
                 vendor,
                 expense_date: dateObj.toISOString(),
@@ -171,25 +171,26 @@ export function UploadDropzone({ formats, businessId, userId }: UploadDropzonePr
             }
 
             if (uploadType === "inventory") {
-              const product = String(r["product"] ?? "").trim();
-              const category = String(r["category"] ?? "").trim();
+              const item = String(r["product"] ?? r["item_name"] ?? "").trim();
               const stockRaw = r["stock"];
               const reorderLevelRaw = r["reorder_level"];
+              const unitCostRaw = r["unit_cost"] ?? r["price"] ?? 0;
 
               const stock = Number(stockRaw);
               const reorderLevel = Number(reorderLevelRaw);
+              const unitCost = Number(unitCostRaw);
 
-              if (!product || !category || isNaN(stock) || isNaN(reorderLevel)) {
+              if (!item || isNaN(stock) || isNaN(reorderLevel)) {
                 continue;
               }
 
               toInsert.push({
                 business_id: businessId,
                 upload_id: uploadId,
-                product_name: product,
-                category,
+                item_name: item,
                 stock: Math.floor(stock),
                 reorder_level: Math.floor(reorderLevel),
+                unit_cost: isNaN(unitCost) ? null : unitCost,
               });
             }
 
@@ -305,7 +306,7 @@ export function UploadDropzone({ formats, businessId, userId }: UploadDropzonePr
           <p className="mt-2 text-xs text-muted-foreground">
             {uploadType === "sales" && "date,product,category,quantity,revenue"}
             {uploadType === "expenses" && "date,expense_category,amount,vendor"}
-            {uploadType === "inventory" && "product,category,stock,reorder_level"}
+            {uploadType === "inventory" && "item_name,stock,reorder_level,unit_cost"}
             {uploadType === "customers" && "customer_name,email,total_spent,last_purchase_date"}
           </p>
         </div>

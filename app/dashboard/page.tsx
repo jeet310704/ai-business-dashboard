@@ -29,8 +29,8 @@ type ExpenseRecord = {
 
 type InventoryRecord = {
   id: string;
-  product_name: string | null;
-  category: string | null;
+  item_name: string | null;
+  unit_cost?: number | null;
   stock: number | null;
   reorder_level: number | null;
 };
@@ -89,7 +89,7 @@ export default async function DashboardPage() {
             .eq("business_id", business.id),
           supabase
             .from("inventory_records")
-            .select("id, product_name, category, stock, reorder_level")
+            .select("id, item_name, stock, reorder_level, unit_cost")
             .eq("business_id", business.id),
           supabase
             .from("customer_records")
@@ -180,11 +180,11 @@ export default async function DashboardPage() {
 
     return {
       id: record.id ?? `inventory-${index}`,
-      name: record.product_name?.trim() || "Unknown product",
-      sku: record.category?.trim() || "Unknown",
+      name: record.item_name?.trim() || "Unknown product",
+      sku: "N/A",
       quantity,
       status,
-      value: 0,
+      value: Number(record.unit_cost ?? 0),
     } as InventoryItem;
   });
 

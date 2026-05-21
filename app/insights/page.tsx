@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { RecommendationsList } from "@/components/insights/recommendations-list";
+import { AiInsightsList } from "@/components/insights/ai-insights-list";
+import { GenerateAiInsightsButton } from "@/components/insights/generate-ai-insights-button";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+import type { Insight } from "@/types";
 
 export default async function InsightsPage() {
   const user = await requireUser();
@@ -41,7 +43,7 @@ export default async function InsightsPage() {
     );
   }
 
-  const [{ data: salesRecords }, { data: expenseRecords }, { data: inventoryRecords }, { data: customerRecords }] =
+  const [{ data: salesRecords }, { data: expenseRecords }, { data: inventoryRecords }, { data: customerRecords }, { data: aiInsightsData }] =
     await Promise.all([
       supabase
         .from("sales_records")
@@ -49,16 +51,21 @@ export default async function InsightsPage() {
         .eq("business_id", business.id),
       supabase
         .from("expense_records")
-        .select("amount, expense_date, expense_category")
+        .select("amount, expense_date, category")
         .eq("business_id", business.id),
       supabase
         .from("inventory_records")
-        .select("product_name, stock, reorder_level")
+        .select("id, item_name, stock, reorder_level, unit_cost")
         .eq("business_id", business.id),
       supabase
         .from("customer_records")
         .select("customer_name, total_spent")
         .eq("business_id", business.id),
+      supabase
+        .from("ai_insights")
+        .select("id, title, insight, severity, created_at")
+        .eq("business_id", business.id)
+        .order("created_at", { ascending: false }),
     ]);
 
   const sales = Array.isArray(salesRecords) ? salesRecords : [];
@@ -117,7 +124,7 @@ export default async function InsightsPage() {
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
     expenseByMonth.set(monthKey, (expenseByMonth.get(monthKey) ?? 0) + amount);
 
-    const category = String(record.expense_category ?? "Other").trim();
+    const category = String(record.category ?? "Other").trim();
     expenseCategories.set(category, (expenseCategories.get(category) ?? 0) + amount);
   }
 
@@ -153,40 +160,22 @@ export default async function InsightsPage() {
     ? ((currentMonthExpenses - previousMonthExpenses) / previousMonthExpenses) * 100
     : 0;
 
-  const insightCards = [
-    {
-      id: "top-category",
-      title: `${topCategory} generated the highest revenue`,
-      description: `Your ${topCategory} sales produced ${formatCurrency(revenueByCategory.get(topCategory) ?? 0)} in revenue.`,
-      impact: "high" as const,
-      category: "revenue" as const,
-    },
-    {
-      id: "top-customer",
-      title: `Top customer spent ${formatCurrency(topCustomerSpend)}`,
-      description: `${topCustomer} is your highest spending customer from uploaded customer data.`,
-      impact: "medium" as const,
-      category: "customer" as const,
-    },
-    {
-      id: "low-stock",
-      title: `${formatNumber(lowStockCount)} products are below reorder level`,
-      description: `Inventory data shows ${formatNumber(lowStockCount)} items at or below their reorder threshold.`,
-      impact: "high" as const,
-      category: "inventory" as const,
-    },
-    {
-      id: "expense-trend",
-      title: expenseChange > 0
-        ? `Expenses rose ${formatNumber(Math.round(expenseChange))}% this month`
-        : "Expense trend is stable",
-      description: expenseChange > 0
-        ? `Expenses increased from ${formatCurrency(previousMonthExpenses)} to ${formatCurrency(currentMonthExpenses)}.`
-        : "Upload more expense records to track month-over-month spending.",
-      impact: expenseChange > 10 ? "high" as const : "medium" as const,
-      category: "expense" as const,
-    },
-  ];
+  const aiInsights: Insight[] = Array.isArray(aiInsightsData)
+    ? (aiInsightsData as Array<{
+        id: string;
+        title: string;
+        insight: string;
+        severity: "high" | "medium" | "low";
+        created_at: string;
+      }>).map((item) => ({
+        id: item.id,
+        title: item.title,
+        description: item.insight,
+        priority: item.severity,
+        category: "revenue" as const,
+        createdAt: item.created_at,
+      }))
+    : [];
 
   return (
     <DashboardShell title="Insights">
@@ -252,7 +241,31 @@ export default async function InsightsPage() {
           </CardContent>
         </Card>
 
-        <RecommendationsList recommendations={insightCards} />
+        <section className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">AI-generated insights</p>
+            <h2 className="text-2xl font-semibold">Generate smart business observations</h2>
+          </div>
+          <GenerateAiInsightsButton />
+        </section>
+
+        {aiInsights.length > 0 ? (
+          <AiInsightsList insights={aiInsights} />
+        ) : (
+          <Card className="border-border/60 bg-muted/20">
+            <CardHeader>
+              <CardTitle>No AI insights yet</CardTitle>
+              <CardDescription>
+                Click the button above to generate AI-powered insights from your uploaded sales data.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                AI insights are persisted in the ai_insights table and displayed here once generated.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </article>
     </DashboardShell>
   );
