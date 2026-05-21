@@ -2,24 +2,48 @@ import Link from "next/link";
 
 import { LogoutButton } from "@/components/auth/logout-button";
 import { ChartCard } from "@/components/dashboard/chart-card";
-import { CustomerGrowthChart } from "@/components/dashboard/customer-growth-chart";
-import { InventorySummary } from "@/components/dashboard/inventory-summary";
 import { KpiCard } from "@/components/dashboard/kpi-card";
-import { MonthlySummarySection } from "@/components/dashboard/monthly-summary";
-import { ProfitLossChart } from "@/components/dashboard/profit-loss-chart";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import {
-  customerGrowthChartData,
-  inventoryItems,
-  kpiMetrics,
-  monthlySummaries,
-  profitLossChartData,
-  revenueChartData,
-} from "@/lib/mock-data";
+import type { ChartDataPoint, KpiMetric } from "@/types";
+import { formatCurrency, formatNumber } from "@/lib/utils";
+
+type SalesRecord = {
+  id: string;
+  product_name: string | null;
+  category: string | null;
+  quantity: number | null;
+  revenue: number | null;
+  sale_date: string | null;
+};
+
+const monthNames = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+function formatMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthLabel(monthKey: string) {
+  const [year, month] = monthKey.split("-");
+  const index = Number(month) - 1;
+  return `${monthNames[index]} ${year}`;
+}
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -31,13 +55,132 @@ export default async function DashboardPage() {
     .eq("owner_id", user.id)
     .maybeSingle();
 
-  const { data: salesRecords } = await supabase
-    .from("sales_records")
-    .select("id")
-    .eq("business_id", business?.id)
-    .limit(1);
+  const salesRecordsQuery = business
+    ? await supabase
+        .from("sales_records")
+        .select("id, product_name, category, quantity, revenue, sale_date")
+        .eq("business_id", business.id)
+    : null;
 
-  const hasSalesRecords = Array.isArray(salesRecords) && salesRecords.length > 0;
+  const salesRecords = Array.isArray(salesRecordsQuery?.data)
+    ? (salesRecordsQuery.data as SalesRecord[])
+    : [];
+  const hasSalesRecords = salesRecords.length > 0;
+
+  const totalRevenue = salesRecords.reduce(
+    (sum, record) => sum + Number(record.revenue ?? 0),
+    0
+  );
+
+  const totalQuantity = salesRecords.reduce(
+    (sum, record) => sum + Number(record.quantity ?? 0),
+    0
+  );
+
+  const totalProducts = new Set(
+    salesRecords
+      .map((record) => record.product_name?.trim() ?? "")
+      .filter(Boolean)
+  ).size;
+
+  const totalCategories = new Set(
+    salesRecords
+      .map((record) => record.category?.trim() ?? "")
+      .filter(Boolean)
+  ).size;
+
+  const monthlyMap = new Map<
+    string,
+    {
+      revenue: number;
+      quantity: number;
+      products: Set<string>;
+      categories: Set<string>;
+    }
+  >();
+
+  for (const record of salesRecords) {
+    const date = record.sale_date ? new Date(record.sale_date) : null;
+    if (!date || Number.isNaN(date.getTime())) {
+      continue;
+    }
+
+    const monthKey = formatMonthKey(date);
+    const month = monthlyMap.get(monthKey) ?? {
+      revenue: 0,
+      quantity: 0,
+      products: new Set<string>(),
+      categories: new Set<string>(),
+    };
+
+    month.revenue += Number(record.revenue ?? 0);
+    month.quantity += Number(record.quantity ?? 0);
+    if (record.product_name?.trim()) {
+      month.products.add(record.product_name.trim());
+    }
+    if (record.category?.trim()) {
+      month.categories.add(record.category.trim());
+    }
+
+    monthlyMap.set(monthKey, month);
+  }
+
+  const monthKeys = Array.from(monthlyMap.keys()).sort();
+  const revenueChartData: ChartDataPoint[] = monthKeys.map((monthKey) => ({
+    name: formatMonthLabel(monthKey),
+    revenue: monthlyMap.get(monthKey)?.revenue ?? 0,
+  }));
+
+  const currentRevenue = Number(
+    revenueChartData.length > 0 ? revenueChartData[revenueChartData.length - 1].revenue : 0
+  );
+  const previousRevenue = Number(
+    revenueChartData.length > 1 ? revenueChartData[revenueChartData.length - 2].revenue : currentRevenue
+  );
+  const revenueChange = previousRevenue ? ((currentRevenue - previousRevenue) / previousRevenue) * 100 : 0;
+
+  const currentQuantity = Number(
+    monthKeys.length > 0 ? monthlyMap.get(monthKeys[monthKeys.length - 1])?.quantity ?? 0 : 0
+  );
+  const previousQuantity = Number(
+    monthKeys.length > 1 ? monthlyMap.get(monthKeys[monthKeys.length - 2])?.quantity ?? currentQuantity : currentQuantity
+  );
+  const quantityChange = previousQuantity ? ((currentQuantity - previousQuantity) / previousQuantity) * 100 : 0;
+
+  const kpiMetrics: KpiMetric[] = [
+    {
+      id: "revenue",
+      label: "Total Revenue",
+      value: formatCurrency(totalRevenue),
+      change: revenueChange,
+      changeLabel: "vs last month",
+      trend: revenueChange > 0 ? "up" : revenueChange < 0 ? "down" : "neutral",
+    },
+    {
+      id: "quantity",
+      label: "Total Quantity Sold",
+      value: formatNumber(totalQuantity),
+      change: quantityChange,
+      changeLabel: "vs last month",
+      trend: quantityChange > 0 ? "up" : quantityChange < 0 ? "down" : "neutral",
+    },
+    {
+      id: "products",
+      label: "Total Products Sold",
+      value: formatNumber(totalProducts),
+      change: 0,
+      changeLabel: "since launch",
+      trend: "neutral",
+    },
+    {
+      id: "categories",
+      label: "Total Categories",
+      value: formatNumber(totalCategories),
+      change: 0,
+      changeLabel: "since launch",
+      trend: "neutral",
+    },
+  ];
 
   return (
     <DashboardShell title="Dashboard">
@@ -89,32 +232,24 @@ export default async function DashboardPage() {
             <section className="grid gap-4 xl:grid-cols-2">
               <ChartCard
                 title="Revenue"
-                description="Monthly revenue over the past 12 months"
+                description="Monthly sales revenue grouped by month"
               >
                 <RevenueChart data={revenueChartData} />
               </ChartCard>
 
-              <ChartCard
-                title="Profit & Loss"
-                description="Monthly profit vs loss trends"
-              >
-                <ProfitLossChart data={profitLossChartData} />
-              </ChartCard>
-            </section>
-
-            <section className="grid gap-4 xl:grid-cols-2">
-              <ChartCard
-                title="Customer Growth"
-                description="Total and new customers per month"
-              >
-                <CustomerGrowthChart data={customerGrowthChartData} />
-              </ChartCard>
-
-              <InventorySummary items={inventoryItems} />
-            </section>
-
-            <section>
-              <MonthlySummarySection summaries={monthlySummaries} />
+              <Card className="border-border/60 bg-muted/20">
+                <CardHeader>
+                  <CardTitle>Expanded analytics coming soon</CardTitle>
+                  <CardDescription>
+                    Profit, customer, and inventory insights will arrive once those uploads are supported.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">
+                    Current dashboard analytics are based on uploaded sales records only.
+                  </p>
+                </CardContent>
+              </Card>
             </section>
           </>
         )}

@@ -84,7 +84,7 @@ export function ReportCard({ report }: ReportCardProps) {
               Export PDF
             </>
           ) : (
-            "Scheduled"
+            "Generate later"
           )}
         </Button>
       </CardContent>

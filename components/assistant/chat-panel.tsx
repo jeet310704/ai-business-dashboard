@@ -41,7 +41,7 @@ export function ChatPanel({ initialMessages, suggestions }: ChatPanelProps) {
         id: `assistant-${Date.now()}`,
         role: "assistant",
         content:
-          "Based on your current business data, I can help analyze that. This is a mock response — AI integration will be available in a future release. Try asking about revenue trends, inventory risks, or quarterly forecasts.",
+          "Based on your uploaded sales data, I can help analyze that. This is a mock response — AI integration will be available in a future release. Try asking about revenue trends, product performance, or category growth.",
         timestamp: new Date().toLocaleTimeString("en-US", {
           hour: "numeric",
           minute: "2-digit",

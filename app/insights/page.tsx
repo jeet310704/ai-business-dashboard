@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { InsightCard } from "@/components/insights/insight-card";
 import { RecommendationsList } from "@/components/insights/recommendations-list";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { insights, recommendations } from "@/lib/mock-data";
+import { recommendations } from "@/lib/mock-data";
+import { formatCurrency, formatNumber } from "@/lib/utils";
 
 export default async function InsightsPage() {
   const user = await requireUser();
@@ -42,18 +42,14 @@ export default async function InsightsPage() {
     );
   }
 
-  const [salesRecords, expenseRecords, inventoryRecords, customerRecords] = await Promise.all([
-    supabase.from("sales_records").select("id").eq("business_id", business.id).limit(1),
-    supabase.from("expense_records").select("id").eq("business_id", business.id).limit(1),
-    supabase.from("inventory_records").select("id").eq("business_id", business.id).limit(1),
-    supabase.from("customer_records").select("id").eq("business_id", business.id).limit(1),
-  ]);
+  const { data: salesRecords } = await supabase
+    .from("sales_records")
+    .select("product_name, category, revenue")
+    .eq("business_id", business.id);
 
-  const hasData = [salesRecords, expenseRecords, inventoryRecords, customerRecords].some(
-    (records) => Array.isArray(records) && records.length > 0
-  );
+  const records = Array.isArray(salesRecords) ? salesRecords : [];
 
-  if (!hasData) {
+  if (records.length === 0) {
     return (
       <DashboardShell title="Insights">
         <div className="mx-auto max-w-2xl">
@@ -61,7 +57,7 @@ export default async function InsightsPage() {
             <CardHeader>
               <CardTitle>No insights yet</CardTitle>
               <CardDescription>
-                Upload sales, expense, inventory, or customer data to generate AI-powered business insights.
+                Upload sales records to generate insights from your real revenue data.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
@@ -69,7 +65,7 @@ export default async function InsightsPage() {
                 href="/uploads"
                 className="inline-flex rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
               >
-                Upload business data
+                Upload sales data
               </Link>
             </CardContent>
           </Card>
@@ -78,31 +74,93 @@ export default async function InsightsPage() {
     );
   }
 
-  const highPriority = insights.filter((i) => i.priority === "high");
-  const otherInsights = insights.filter((i) => i.priority !== "high");
+  const revenueByProduct = new Map<string, number>();
+  const revenueByCategory = new Map<string, number>();
+  let totalRevenue = 0;
+
+  for (const record of records) {
+    const revenue = Number(record.revenue ?? 0);
+    totalRevenue += revenue;
+
+    const product = record.product_name?.trim() || "Unknown product";
+    const category = record.category?.trim() || "Other";
+
+    revenueByProduct.set(product, (revenueByProduct.get(product) ?? 0) + revenue);
+    revenueByCategory.set(category, (revenueByCategory.get(category) ?? 0) + revenue);
+  }
+
+  const bestProduct = Array.from(revenueByProduct.entries())
+    .sort((a, b) => b[1] - a[1])[0]?.[0] ?? "N/A";
+  const topCategory = Array.from(revenueByCategory.entries())
+    .sort((a, b) => b[1] - a[1])[0]?.[0] ?? "N/A";
 
   return (
     <DashboardShell title="Insights">
       <article className="space-y-8">
-        {highPriority.length > 0 && (
-          <section>
-            <h2 className="mb-4 text-sm font-medium text-muted-foreground">Anomaly alerts</h2>
-            <div className="grid gap-4 lg:grid-cols-2">
-              {highPriority.map((insight) => (
-                <InsightCard key={insight.id} insight={insight} />
-              ))}
-            </div>
-          </section>
-        )}
-
         <section>
-          <h2 className="mb-4 text-sm font-medium text-muted-foreground">AI insights</h2>
-          <div className="grid gap-4 lg:grid-cols-2">
-            {otherInsights.map((insight) => (
-              <InsightCard key={insight.id} insight={insight} />
-            ))}
-          </div>
+          <p className="text-sm text-muted-foreground">Basic sales insights</p>
+          <h2 className="text-2xl font-semibold">Insights from your uploaded sales records</h2>
         </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Total revenue</CardTitle>
+              <CardDescription>From your uploaded sales records</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold">{formatCurrency(totalRevenue)}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Best-selling product</CardTitle>
+              <CardDescription>By revenue</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl font-semibold">{bestProduct}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Top category</CardTitle>
+              <CardDescription>Most revenue by category</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xl font-semibold">{topCategory}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Sales rows analyzed</CardTitle>
+              <CardDescription>Uploaded records used for insights</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-semibold">{formatNumber(records.length)}</p>
+            </CardContent>
+          </Card>
+        </section>
+
+        <Card className="border-border/60 bg-muted/20">
+          <CardHeader>
+            <CardTitle>Basic sales insights</CardTitle>
+            <CardDescription>
+              These insights are generated directly from your uploaded sales records.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-sm text-muted-foreground">Total revenue</p>
+                <p className="mt-2 text-2xl font-semibold">{formatCurrency(totalRevenue)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Products analyzed</p>
+                <p className="mt-2 text-2xl font-semibold">{formatNumber(revenueByProduct.size)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <RecommendationsList recommendations={recommendations} />
       </article>
