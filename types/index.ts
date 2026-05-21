@@ -39,11 +39,13 @@ export type MonthlySummary = {
 // Uploads
 export type UploadFileStatus = "uploaded" | "completed" | "processing" | "failed" | "queued";
 export type UploadFileType = "csv" | "xlsx";
+export type UploadType = "sales" | "expenses" | "inventory" | "customers";
 
 export type UploadHistoryItem = {
   id: string;
   fileName: string;
   fileType: UploadFileType;
+  uploadType?: UploadType;
   size: string;
   uploadedAt: string;
   status: UploadFileStatus;

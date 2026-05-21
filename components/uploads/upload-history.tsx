@@ -42,7 +42,7 @@ export function UploadHistory({ items }: UploadHistoryProps) {
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">
                 <th className="pb-3 pr-4 font-medium">File</th>
-                <th className="pb-3 pr-4 font-medium">Type</th>
+                <th className="pb-3 pr-4 font-medium">Data type</th>
                 <th className="pb-3 pr-4 font-medium">Size</th>
                 <th className="pb-3 pr-4 font-medium">Uploaded</th>
                 <th className="pb-3 pr-4 font-medium">Records</th>
@@ -67,7 +67,7 @@ export function UploadHistory({ items }: UploadHistoryProps) {
                         <Progress value={item.progress} className="mt-2 max-w-[200px]" />
                       )}
                     </td>
-                    <td className="py-4 pr-4 uppercase text-muted-foreground">{item.fileType}</td>
+                    <td className="py-4 pr-4 uppercase text-muted-foreground">{item.uploadType ?? item.fileType}</td>
                     <td className="py-4 pr-4 text-muted-foreground">{item.size}</td>
                     <td className="py-4 pr-4 text-muted-foreground">{formatDate(item.uploadedAt)}</td>
                     <td className="py-4 pr-4 text-muted-foreground">

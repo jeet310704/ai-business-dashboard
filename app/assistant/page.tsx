@@ -42,22 +42,44 @@ export default async function AssistantPage() {
     );
   }
 
-  const { data: salesRecords } = await supabase
-    .from("sales_records")
-    .select("product_name, category, revenue")
-    .eq("business_id", business.id);
+  const [
+    { data: salesRecords },
+    { data: expenseRecords },
+    { data: inventoryRecords },
+    { data: customerRecords },
+  ] = await Promise.all([
+    supabase
+      .from("sales_records")
+      .select("product_name, category, revenue")
+      .eq("business_id", business.id),
+    supabase
+      .from("expense_records")
+      .select("amount")
+      .eq("business_id", business.id),
+    supabase
+      .from("inventory_records")
+      .select("product_name, stock, reorder_level")
+      .eq("business_id", business.id),
+    supabase
+      .from("customer_records")
+      .select("customer_name, total_spent")
+      .eq("business_id", business.id),
+  ]);
 
-  const records = Array.isArray(salesRecords) ? salesRecords : [];
+  const sales = Array.isArray(salesRecords) ? salesRecords : [];
+  const expenses = Array.isArray(expenseRecords) ? expenseRecords : [];
+  const inventory = Array.isArray(inventoryRecords) ? inventoryRecords : [];
+  const customers = Array.isArray(customerRecords) ? customerRecords : [];
 
-  if (records.length === 0) {
+  if (sales.length === 0 && expenses.length === 0 && inventory.length === 0 && customers.length === 0) {
     return (
       <DashboardShell title="Assistant">
         <div className="mx-auto max-w-2xl">
           <Card>
             <CardHeader>
-              <CardTitle>Your AI assistant is waiting for sales data</CardTitle>
+              <CardTitle>Your assistant is waiting for uploads</CardTitle>
               <CardDescription>
-                Upload sales records first so the assistant can answer questions using your uploaded business data.
+                Upload your business data so this page can summarize revenue, expenses, customers, and inventory health.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
@@ -65,7 +87,7 @@ export default async function AssistantPage() {
                 href="/uploads"
                 className="inline-flex rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
               >
-                Upload sales data
+                Upload business data
               </Link>
             </CardContent>
           </Card>
@@ -74,50 +96,64 @@ export default async function AssistantPage() {
     );
   }
 
-  const totalRevenue = records.reduce((sum, record) => sum + Number(record.revenue ?? 0), 0);
-  const revenueByProduct = new Map<string, number>();
-  const revenueByCategory = new Map<string, number>();
+  const totalRevenue = sales.reduce((sum, record) => sum + Number(record.revenue ?? 0), 0);
+  const totalExpenses = expenses.reduce((sum, record) => sum + Number(record.amount ?? 0), 0);
+  const profit = totalRevenue - totalExpenses;
+  const customerCount = customers.length;
+  const totalStock = inventory.reduce((sum, record) => sum + Number(record.stock ?? 0), 0);
+  const lowStockCount = inventory.filter((record) => {
+    const stock = Number(record.stock ?? 0);
+    const reorderLevel = Number(record.reorder_level ?? 0);
+    return stock <= reorderLevel;
+  }).length;
 
-  for (const record of records) {
-    const revenue = Number(record.revenue ?? 0);
-    const product = record.product_name?.trim() || "Unknown product";
-    const category = record.category?.trim() || "Other";
-
-    revenueByProduct.set(product, (revenueByProduct.get(product) ?? 0) + revenue);
-    revenueByCategory.set(category, (revenueByCategory.get(category) ?? 0) + revenue);
-  }
-
-  const bestProduct = Array.from(revenueByProduct.entries())
+  const bestProduct = Array.from(
+    sales.reduce((map, record) => {
+      const name = record.product_name?.trim() || "Unknown product";
+      const revenue = Number(record.revenue ?? 0);
+      map.set(name, (map.get(name) ?? 0) + revenue);
+      return map;
+    }, new Map<string, number>()).entries()
+  )
     .sort((a, b) => b[1] - a[1])[0]?.[0] ?? "N/A";
-  const topCategory = Array.from(revenueByCategory.entries())
-    .sort((a, b) => b[1] - a[1])[0]?.[0] ?? "N/A";
+
+  const inventoryHealth = lowStockCount > 0 ? "At risk" : "Healthy";
 
   return (
     <DashboardShell title="Assistant">
-      <div className="grid gap-6 xl:grid-cols-[320px_1fr]">
+      <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
         <Card className="border-border/60 bg-muted/20">
           <CardHeader>
-            <CardTitle>Sales data summary</CardTitle>
+            <CardTitle>Business context</CardTitle>
             <CardDescription>
-              Your assistant can now reference uploaded sales data. AI chat will be connected later.
+              Your assistant can now use uploaded business data to provide better context.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4">
+          <CardContent className="space-y-4">
             <div>
-              <p className="text-sm text-muted-foreground">Total revenue</p>
+              <p className="text-sm text-muted-foreground">Revenue</p>
               <p className="mt-2 text-2xl font-semibold">{formatCurrency(totalRevenue)}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Sales records</p>
-              <p className="mt-2 text-2xl font-semibold">{formatNumber(records.length)}</p>
+              <p className="text-sm text-muted-foreground">Expenses</p>
+              <p className="mt-2 text-2xl font-semibold">{formatCurrency(totalExpenses)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Profit</p>
+              <p className="mt-2 text-2xl font-semibold">{formatCurrency(profit)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Customers</p>
+              <p className="mt-2 text-2xl font-semibold">{formatNumber(customerCount)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Inventory health</p>
+              <p className="mt-2 text-2xl font-semibold">{inventoryHealth}</p>
+              <p className="text-xs text-muted-foreground">{formatNumber(lowStockCount)} low stock items</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Top product</p>
               <p className="mt-2 text-lg font-semibold">{bestProduct}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Top category</p>
-              <p className="mt-2 text-lg font-semibold">{topCategory}</p>
             </div>
           </CardContent>
         </Card>

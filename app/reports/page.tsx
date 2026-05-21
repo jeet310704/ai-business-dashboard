@@ -41,14 +41,48 @@ export default async function ReportsPage() {
     );
   }
 
-  const { data: salesRecords } = await supabase
-    .from("sales_records")
-    .select("product_name, category, revenue")
-    .eq("business_id", business.id);
+  const [
+    { data: salesRecords },
+    { data: expenseRecords },
+    { data: inventoryRecords },
+    { data: customerRecords },
+  ] = await Promise.all([
+    supabase
+      .from("sales_records")
+      .select("product_name, category, revenue")
+      .eq("business_id", business.id),
+    supabase
+      .from("expense_records")
+      .select("amount")
+      .eq("business_id", business.id),
+    supabase
+      .from("inventory_records")
+      .select("id")
+      .eq("business_id", business.id),
+    supabase
+      .from("customer_records")
+      .select("id, total_spent")
+      .eq("business_id", business.id),
+  ]);
 
-  const records = Array.isArray(salesRecords) ? salesRecords : [];
+  const sales = Array.isArray(salesRecords) ? salesRecords : [];
+  const expenses = Array.isArray(expenseRecords) ? expenseRecords : [];
+  const inventory = Array.isArray(inventoryRecords) ? inventoryRecords : [];
+  const customers = Array.isArray(customerRecords) ? customerRecords : [];
 
-  if (records.length === 0) {
+  const totalRevenue = sales.reduce((sum, record) => sum + Number(record.revenue ?? 0), 0);
+  const totalExpenses = expenses.reduce((sum, record) => sum + Number(record.amount ?? 0), 0);
+  const totalProfit = totalRevenue - totalExpenses;
+  const totalInventoryItems = inventory.length;
+  const totalCustomers = customers.length;
+  const productCount = new Set(
+    sales.map((record) => record.product_name?.trim() ?? "").filter(Boolean)
+  ).size;
+  const categoryCount = new Set(
+    sales.map((record) => record.category?.trim() ?? "").filter(Boolean)
+  ).size;
+
+  if (sales.length === 0 && expenses.length === 0 && inventory.length === 0 && customers.length === 0) {
     return (
       <DashboardShell title="Reports">
         <div className="mx-auto max-w-2xl">
@@ -56,7 +90,7 @@ export default async function ReportsPage() {
             <CardHeader>
               <CardTitle>No reports generated yet</CardTitle>
               <CardDescription>
-                Reports will be generated after your sales data is uploaded.
+                Upload business data to start generating report summaries.
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
@@ -64,7 +98,7 @@ export default async function ReportsPage() {
                 href="/uploads"
                 className="inline-flex rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
               >
-                Upload sales data
+                Upload business data
               </Link>
             </CardContent>
           </Card>
@@ -73,44 +107,38 @@ export default async function ReportsPage() {
     );
   }
 
-  let totalRevenue = 0;
-  const categories = new Set<string>();
-  const products = new Set<string>();
-
-  for (const record of records) {
-    totalRevenue += Number(record.revenue ?? 0);
-    if (record.category?.trim()) {
-      categories.add(record.category.trim());
-    }
-    if (record.product_name?.trim()) {
-      products.add(record.product_name.trim());
-    }
-  }
-
   const reportCards = [
     {
       id: "sales-summary",
       title: "Sales Summary Report",
-      description: `A revenue summary based on ${records.length} uploaded sales records.`,
+      description: `Revenue overview from ${formatNumber(sales.length)} sales records.`,
       type: "sales" as const,
-      status: "scheduled" as const,
-      period: "Latest sales data",
+      status: sales.length > 0 ? "ready" as const : "scheduled" as const,
+      period: "Latest sales uploads",
     },
     {
-      id: "category-report",
-      title: "Revenue by Category Report",
-      description: `Category-level revenue performance for ${formatNumber(categories.size)} categories.`,
-      type: "sales" as const,
-      status: "scheduled" as const,
-      period: "Latest sales data",
+      id: "expense-summary",
+      title: "Expense Summary Report",
+      description: `Expense overview from ${formatNumber(expenses.length)} uploaded records.`,
+      type: "expense" as const,
+      status: expenses.length > 0 ? "ready" as const : "scheduled" as const,
+      period: "Latest expense uploads",
     },
     {
-      id: "product-performance",
-      title: "Product Performance Report",
-      description: `Top product revenue insights from your uploaded sales records.`,
-      type: "sales" as const,
-      status: "scheduled" as const,
-      period: "Latest sales data",
+      id: "inventory-health",
+      title: "Inventory Health Report",
+      description: `Stock status from ${formatNumber(totalInventoryItems)} inventory records.`,
+      type: "inventory" as const,
+      status: inventory.length > 0 ? "ready" as const : "scheduled" as const,
+      period: "Latest inventory uploads",
+    },
+    {
+      id: "customer-insights",
+      title: "Customer Summary Report",
+      description: `Customer spend and engagement from ${formatNumber(totalCustomers)} uploaded customers.`,
+      type: "customer" as const,
+      status: customers.length > 0 ? "ready" as const : "scheduled" as const,
+      period: "Latest customer uploads",
     },
   ];
 
@@ -121,7 +149,7 @@ export default async function ReportsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total revenue
+                Revenue
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -131,11 +159,34 @@ export default async function ReportsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Sales records
+                Expenses
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{formatNumber(records.length)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(totalExpenses)}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Estimated profit
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{formatCurrency(totalProfit)}</p>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Products
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{formatNumber(productCount)}</p>
             </CardContent>
           </Card>
           <Card>
@@ -145,14 +196,34 @@ export default async function ReportsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">{formatNumber(categories.size)}</p>
+              <p className="text-2xl font-bold">{formatNumber(categoryCount)}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Inventory items
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{formatNumber(totalInventoryItems)}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Customers
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{formatNumber(totalCustomers)}</p>
             </CardContent>
           </Card>
         </section>
 
         <section>
           <h2 className="mb-4 text-lg font-semibold">Generated reports</h2>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {reportCards.map((report) => (
               <ReportCard key={report.id} report={report} />
             ))}
@@ -163,12 +234,12 @@ export default async function ReportsPage() {
           <CardHeader>
             <CardTitle className="text-base">Analytics summary</CardTitle>
             <CardDescription>
-              Reports are built from your uploaded sales records and can be exported when ready.
+              These summaries are generated from your uploaded record data.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground">
-              Review sales trends, category performance, and product results based on your real data. Upload more records to keep these reports up to date.
+              Upload more business data to keep these report summaries current and actionable.
             </p>
           </CardContent>
         </Card>

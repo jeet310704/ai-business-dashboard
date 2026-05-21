@@ -6,7 +6,7 @@ import { UploadHistory } from "@/components/uploads/upload-history";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supportedUploadFormats } from "@/lib/mock-data";
-import type { UploadFileStatus, UploadFileType } from "@/types";
+import type { UploadFileStatus, UploadFileType, UploadType, UploadHistoryItem } from "@/types";
 
 export default async function UploadsPage() {
   const user = await requireUser();
@@ -45,13 +45,16 @@ export default async function UploadsPage() {
 
   const { data: uploads } = await supabase
     .from("uploads")
-    .select("id, business_id, file_name, file_type, status, uploaded_at")
+    .select("id, business_id, file_name, file_type, upload_type, status, uploaded_at")
     .eq("business_id", business.id)
     .order("uploaded_at", { ascending: false });
 
   const uploadItems = Array.isArray(uploads)
     ? uploads.map((item) => {
         const fileType: UploadFileType = item.file_type === "xlsx" ? "xlsx" : "csv";
+        const uploadType: UploadType | undefined = ["sales", "expenses", "inventory", "customers"].includes(item.upload_type)
+          ? (item.upload_type as UploadType)
+          : undefined;
         const status: UploadFileStatus = ["uploaded", "completed", "processing", "failed", "queued"].includes(item.status)
           ? (item.status as UploadFileStatus)
           : "completed";
@@ -60,10 +63,11 @@ export default async function UploadsPage() {
           id: item.id,
           fileName: item.file_name ?? "Untitled",
           fileType,
+          uploadType,
           size: "—",
           uploadedAt: item.uploaded_at ?? new Date().toISOString(),
           status,
-        };
+        } as UploadHistoryItem;
       })
     : [];
 
