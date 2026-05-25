@@ -7,6 +7,7 @@ import { KpiCard } from "@/components/dashboard/kpi-card";
 import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { ProjectedRevenueChart } from "@/components/forecast/projected-revenue-chart";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import DashboardScopeClient from "@/components/dashboard/DashboardScopeClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -278,6 +279,7 @@ export default async function DashboardPage() {
   return (
     <DashboardShell title="Dashboard">
       <div className="space-y-6">
+        <DashboardScopeClient />
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm text-zinc-400">Overview</p>

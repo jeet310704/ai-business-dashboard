@@ -1,6 +1,11 @@
-import { FileSpreadsheet, FileText } from "lucide-react";
+"use client";
+
+import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
+import { FileSpreadsheet, FileText, Trash2 } from "lucide-react";
 import type { UploadFileStatus, UploadHistoryItem } from "@/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { formatNumber } from "@/lib/utils";
@@ -30,6 +35,59 @@ function formatDate(iso: string): string {
 }
 
 export function UploadHistory({ items }: UploadHistoryProps) {
+  const router = useRouter();
+  const [displayItems, setDisplayItems] = useState(items);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const handleDelete = useCallback(
+    async (uploadId: string, fileName: string) => {
+      if (!window.confirm(`Delete the uploaded dataset '${fileName}'? This will remove the upload and any associated records.`)) {
+        return;
+      }
+
+      setDeletingId(uploadId);
+      setMessage(null);
+
+      try {
+        const response = await fetch("/api/uploads/delete", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ uploadId }),
+        });
+
+        const payload = await response.json();
+        if (!response.ok || payload.error) {
+          throw new Error(payload.error || "Delete failed.");
+        }
+
+        setDisplayItems((current) => current.filter((item) => item.id !== uploadId));
+        setMessage({ type: "success", text: "Upload deleted successfully." });
+      } catch (error) {
+        setMessage({ type: "error", text: (error as Error).message || "Unable to delete upload." });
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    []
+  );
+
+  if (displayItems.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Upload History</CardTitle>
+          <CardDescription>Recent file uploads and processing status</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">No uploads are currently available. Upload a new dataset to get started.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -37,8 +95,19 @@ export function UploadHistory({ items }: UploadHistoryProps) {
         <CardDescription>Recent file uploads and processing status</CardDescription>
       </CardHeader>
       <CardContent>
+        {message ? (
+          <div
+            className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+              message.type === "success"
+                ? "border-emerald-200 bg-emerald-950/10 text-emerald-200"
+                : "border-rose-200 bg-rose-950/10 text-rose-200"
+            }`}
+          >
+            {message.text}
+          </div>
+        ) : null}
         <article className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">
                 <th className="pb-3 pr-4 font-medium">File</th>
@@ -46,12 +115,14 @@ export function UploadHistory({ items }: UploadHistoryProps) {
                 <th className="pb-3 pr-4 font-medium">Size</th>
                 <th className="pb-3 pr-4 font-medium">Uploaded</th>
                 <th className="pb-3 pr-4 font-medium">Records</th>
-                <th className="pb-3 font-medium">Status</th>
+                <th className="pb-3 pr-4 font-medium">Status</th>
+                <th className="pb-3 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => {
+              {displayItems.map((item) => {
                 const status = statusConfig[item.status];
+                const isDeleting = deletingId === item.id;
                 return (
                   <tr key={item.id} className="border-b border-border/50 last:border-0">
                     <td className="py-4 pr-4">
@@ -75,6 +146,17 @@ export function UploadHistory({ items }: UploadHistoryProps) {
                     </td>
                     <td className="py-4">
                       <Badge variant={status.variant}>{status.label}</Badge>
+                    </td>
+                    <td className="py-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(item.id, item.fileName)}
+                        disabled={isDeleting}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {isDeleting ? "Deleting" : "Delete"}
+                      </Button>
                     </td>
                   </tr>
                 );

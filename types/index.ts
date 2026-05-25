@@ -51,6 +51,10 @@ export type UploadHistoryItem = {
   status: UploadFileStatus;
   progress?: number;
   records?: number;
+  validationScore?: "Excellent" | "Good" | "Warning" | "Poor";
+  warningCount?: number;
+  rejectedRows?: number;
+  duplicateRows?: number;
 };
 
 export type SupportedUploadFormat = {

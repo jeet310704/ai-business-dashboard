@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  AlertTriangle,
   Bot,
   FileText,
   LayoutDashboard,
@@ -25,6 +26,7 @@ const iconMap: Record<string, LucideIcon> = {
   TrendingUp,
   Bot,
   FileText,
+  AlertTriangle,
   Settings,
 };
 

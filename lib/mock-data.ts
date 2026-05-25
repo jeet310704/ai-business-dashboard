@@ -23,7 +23,10 @@ export const navItems: NavItem[] = [
   { title: "Uploads", href: "/uploads", icon: "Upload" },
   { title: "Insights", href: "/insights", icon: "Lightbulb" },
   { title: "Forecast", href: "/forecast", icon: "TrendingUp" },
-  { title: "Assistant", href: "/assistant", icon: "Bot" },
+  { title: "AI Chat", href: "/ai-chat", icon: "Bot" },
+  { title: "AI Analytics", href: "/dashboard/analytics-ai", icon: "TrendingUp" },
+  { title: "Anomalies", href: "/dashboard/anomalies", icon: "AlertTriangle" },
+  { title: "Assistant", href: "/assistant", icon: "FileText" },
   { title: "Reports", href: "/reports", icon: "FileText" },
   { title: "Settings", href: "/settings", icon: "Settings" },
 ];

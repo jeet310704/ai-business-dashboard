@@ -2,9 +2,28 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ReportCard } from "@/components/reports/report-card";
+import ReportsClient from "@/components/reports/ReportsClient";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+
+function parseAiReportSections(content: string) {
+  const headingRegex = /(Executive Summary|Revenue Analysis|Expense Analysis|Inventory Analysis|Customer Analysis|Risks|Recommendations):?/gi;
+  const parts = content.split(headingRegex).slice(1);
+  const sections: Array<{ title: string; content: string }> = [];
+
+  for (let i = 0; i < parts.length; i += 2) {
+    const title = parts[i]?.trim();
+    const sectionBody = parts[i + 1]?.trim();
+    if (title && sectionBody) {
+      sections.push({ title, content: sectionBody });
+    }
+  }
+
+  return sections.length > 0
+    ? sections
+    : [{ title: "Report", content: content.trim() }];
+}
 
 export default async function ReportsPage() {
   const user = await requireUser();
@@ -46,6 +65,7 @@ export default async function ReportsPage() {
     { data: expenseRecords },
     { data: inventoryRecords },
     { data: customerRecords },
+    { data: reportRecords },
   ] = await Promise.all([
     supabase
       .from("sales_records")
@@ -63,12 +83,19 @@ export default async function ReportsPage() {
       .from("customer_records")
       .select("id, total_spent")
       .eq("business_id", business.id),
+    supabase
+      .from("reports")
+      .select("id, title, description, status, type, created_at, content")
+      .eq("business_id", business.id)
+      .order("created_at", { ascending: false })
+      .limit(10),
   ]);
 
   const sales = Array.isArray(salesRecords) ? salesRecords : [];
   const expenses = Array.isArray(expenseRecords) ? expenseRecords : [];
   const inventory = Array.isArray(inventoryRecords) ? inventoryRecords : [];
   const customers = Array.isArray(customerRecords) ? customerRecords : [];
+  const reports = Array.isArray(reportRecords) ? reportRecords : [];
 
   const totalRevenue = sales.reduce((sum, record) => sum + Number(record.revenue ?? 0), 0);
   const totalExpenses = expenses.reduce((sum, record) => sum + Number(record.amount ?? 0), 0);
@@ -81,6 +108,11 @@ export default async function ReportsPage() {
   const categoryCount = new Set(
     sales.map((record) => record.category?.trim() ?? "").filter(Boolean)
   ).size;
+
+  const latestReport = reports[0];
+  const latestReportSections = latestReport?.content
+    ? parseAiReportSections(latestReport.content)
+    : [];
 
   if (sales.length === 0 && expenses.length === 0 && inventory.length === 0 && customers.length === 0) {
     return (
@@ -219,6 +251,67 @@ export default async function ReportsPage() {
               <p className="text-2xl font-bold">{formatNumber(totalCustomers)}</p>
             </CardContent>
           </Card>
+        </section>
+
+        <section className="space-y-6">
+            <div className="flex flex-col gap-4 rounded-xl border border-border/60 bg-muted/10 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold">AI business reports</h1>
+              <p className="text-sm text-muted-foreground">
+                Generate actionable business reports from your sales, expense, inventory, and customer data.
+              </p>
+            </div>
+            <ReportsClient />
+          </div>
+
+          {latestReport ? (
+            <Card className="border-border/60 bg-muted/20">
+              <CardHeader>
+                <CardTitle>{latestReport.title}</CardTitle>
+                <CardDescription>{latestReport.description}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {latestReportSections.map((section) => (
+                  <div key={section.title}>
+                    <h3 className="text-lg font-semibold">{section.title}</h3>
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      {section.content}
+                    </p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-border/60 bg-muted/20">
+              <CardHeader>
+                <CardTitle>No AI report available</CardTitle>
+                <CardDescription>
+                  Click the button to generate your first report from live business records.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+
+          {reports.length > 1 && (
+            <section>
+              <h2 className="mb-4 text-lg font-semibold">Report history</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {reports.slice(0, 4).map((report) => (
+                  <Card key={report.id} className="border-border/60 bg-muted/20">
+                    <CardHeader>
+                      <CardTitle>{report.title}</CardTitle>
+                      <CardDescription>{report.description}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-muted-foreground">
+                        Generated {new Date(report.created_at).toLocaleDateString()}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          )}
         </section>
 
         <section>
