@@ -18,8 +18,9 @@ export function ChatPanel({ initialMessages, suggestions }: ChatPanelProps) {
   const [messages, setMessages] = useState(initialMessages);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSend = (text: string) => {
+  const handleSend = async (text: string) => {
     if (!text.trim() || isTyping) return;
 
     const userMessage: ChatMessage = {
@@ -35,21 +36,39 @@ export function ChatPanel({ initialMessages, suggestions }: ChatPanelProps) {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsTyping(true);
+    setError("");
 
-    setTimeout(() => {
+    try {
+      const response = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to get a response");
+      }
+
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
-        content:
-          "Based on your uploaded sales data, I can help analyze that. This is a mock response — AI integration will be available in a future release. Try asking about revenue trends, product performance, or category growth.",
+        content: data.text ?? "Unable to generate a response.",
         timestamp: new Date().toLocaleTimeString("en-US", {
           hour: "numeric",
           minute: "2-digit",
         }),
       };
+
       setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to get a response. Please try again.");
+      // Remove the user message bubble if the request failed
+      setMessages((prev) => prev.slice(0, -1));
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -70,6 +89,11 @@ export function ChatPanel({ initialMessages, suggestions }: ChatPanelProps) {
 
       <CardContent className="flex flex-1 flex-col overflow-hidden p-0">
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
+          {messages.length === 0 && !isTyping && (
+            <p className="text-center text-sm text-muted-foreground py-8">
+              Ask a question below to get started.
+            </p>
+          )}
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
@@ -86,6 +110,11 @@ export function ChatPanel({ initialMessages, suggestions }: ChatPanelProps) {
                 </span>
               </div>
             </article>
+          )}
+          {error && (
+            <p className="rounded-lg border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
           )}
         </div>
 

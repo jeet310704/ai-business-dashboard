@@ -71,10 +71,6 @@ export function AnalyticsPanel() {
     setLoading(true);
     setError(null);
 
-    const filters = scope;
-    console.log("Sending scope filters to API:", filters);
-    console.log("[DEBUG] AnalyticsPanel: Query:", text);
-
     try {
       const res = await fetch("/api/analytics-query", {
         method: "POST",
@@ -83,7 +79,6 @@ export function AnalyticsPanel() {
       });
 
       const payload = await res.json();
-      console.log("[DEBUG] AnalyticsPanel: API Response received:", payload);
 
       if (!res.ok) {
         setError(payload?.error || "Failed to run analytics query.");
@@ -92,8 +87,8 @@ export function AnalyticsPanel() {
       }
 
       const analysis: AnalysisResult = {
-        text: payload.text ?? payload.answer ?? (payload.analysis && payload.analysis.raw) ?? null,
-        raw: payload.raw ?? (payload.text ?? null) ?? JSON.stringify(payload),
+        text: payload.text ?? null,
+        raw: payload.text ?? JSON.stringify(payload),
       };
 
       const entry = { query: text, result: analysis };

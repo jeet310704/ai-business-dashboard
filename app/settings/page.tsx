@@ -9,18 +9,51 @@ import { NotificationSettings } from "@/components/settings/notification-setting
 import { ProfileSettings } from "@/components/settings/profile-settings";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { UserProfile } from "@/types";
 import {
   billingPlans,
   businessInfo,
   notificationSettings,
-  userProfile,
 } from "@/lib/mock-data";
 
 export default async function SettingsPage() {
   const user = await requireUser();
   const supabase = await createClient();
 
-  const { data: business, error } = await supabase
+  // Try to get display name from profiles table, then user metadata, then email prefix
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("full_name, name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const rawName: string =
+    profileRow?.full_name ??
+    profileRow?.name ??
+    (user.user_metadata?.full_name as string | undefined) ??
+    (user.user_metadata?.name as string | undefined) ??
+    "";
+
+  const displayName = rawName.trim() || "No name set";
+  const email = user.email ?? "";
+  const initials = rawName.trim()
+    ? rawName
+        .trim()
+        .split(/\s+/)
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : email.slice(0, 2).toUpperCase();
+
+  const realUserProfile: UserProfile = {
+    name: displayName,
+    email,
+    role: "Business Owner",
+    avatarInitials: initials || "??",
+  };
+
+  const { data: business } = await supabase
     .from("businesses")
     .select("id, name, industry, created_at")
     .eq("owner_id", user.id)
@@ -38,9 +71,9 @@ export default async function SettingsPage() {
   return (
     <DashboardShell title="Settings">
       <div className="mx-auto max-w-4xl space-y-6">
-        <ProfileSettings profile={userProfile} />
-        {businessSettings ? (
-          <BusinessSettings business={businessSettings} />
+        <ProfileSettings profile={realUserProfile} />
+        {businessSettings && business ? (
+          <BusinessSettings business={businessSettings} businessId={business.id} />
         ) : (
           <Card>
             <CardHeader>

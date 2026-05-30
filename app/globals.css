@@ -49,8 +49,31 @@
   border-color: var(--border);
 }
 
-html {
+/* Default dark theme (applied via html.dark class set by inline script) */
+html.dark {
   color-scheme: dark;
+}
+
+/* Light theme — overrides :root values when html.light is active */
+html.light {
+  color-scheme: light;
+  --background: oklch(0.98 0.004 260);
+  --foreground: oklch(0.13 0.012 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.13 0.012 260);
+  --muted: oklch(0.94 0.005 260);
+  --muted-foreground: oklch(0.48 0.02 260);
+  --border: oklch(0.87 0.01 260);
+  --input: oklch(0.94 0.005 260);
+  --primary: oklch(0.52 0.18 250);
+  --primary-foreground: oklch(0.98 0.004 260);
+  --accent: oklch(0.93 0.008 260);
+  --accent-foreground: oklch(0.13 0.012 260);
+  --destructive: oklch(0.55 0.22 25);
+  --sidebar: oklch(0.95 0.005 260);
+  --sidebar-foreground: oklch(0.22 0.012 260);
+  --sidebar-border: oklch(0.87 0.01 260);
+  --sidebar-accent: oklch(0.91 0.007 260);
 }
 
 body {

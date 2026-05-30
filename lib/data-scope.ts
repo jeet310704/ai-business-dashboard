@@ -91,23 +91,27 @@ export function parseScopeFromSearchParams(searchParams: Record<string, string |
   return parseScope({ timeScope, startDate, endDate, uploadId, datasetType });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
 export function applyDataScopeToQuery<T extends { gte?: Function; lte?: Function; eq?: Function }>(
   query: T,
   scope: DataScopeFilter,
-  dateField = "record_date"
-) {
+  dateField = "created_at"
+): T {
   const range = getDateRangeForScope(scope);
 
+  // Each builder method returns a new builder of the same shape.
+  // We use `as unknown as T` to reassign without fighting the deeply-nested
+  // Supabase generic types (which hit TypeScript's instantiation depth limit).
   if (scope.uploadId && typeof query.eq === "function") {
-    query.eq("upload_id", scope.uploadId);
+    query = query.eq("upload_id", scope.uploadId) as unknown as T;
   }
 
   if (range.startDate && typeof query.gte === "function") {
-    query.gte(dateField, range.startDate);
+    query = query.gte(dateField, range.startDate) as unknown as T;
   }
 
   if (range.endDate && typeof query.lte === "function") {
-    query.lte(dateField, range.endDate);
+    query = query.lte(dateField, range.endDate) as unknown as T;
   }
 
   return query;

@@ -25,7 +25,7 @@ export default function ReportScopePanel() {
         <div>
           <p className="text-sm text-muted-foreground">Current filter</p>
           <p className="text-sm text-foreground">
-            {scope.uploadId ? "Selected upload" : "All uploads"} • {scope.datasetType ? `${scope.datasetType} data` : "All datasets"} • {scope.timeScope === "custom" ? `${scope.startDate || "start"} → ${scope.endDate || "end"}` : scope.timeScope.replace(/_/g, " ")}
+            {scope.uploadId ? "Selected upload" : "All uploads"} • {scope.datasetType ? `${scope.datasetType} data` : "All datasets"} • {scope.timeScope === "custom" ? `${scope.startDate || "start"} → ${scope.endDate || "end"}` : (scope.timeScope ?? "all time").replace(/_/g, " ")}
           </p>
         </div>
         <GenerateAiReportButton scope={scope} />

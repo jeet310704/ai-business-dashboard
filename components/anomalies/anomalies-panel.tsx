@@ -63,7 +63,7 @@ export default function AnomaliesPanel() {
 
       setAnalysis({
         text: payload.text ?? "No anomaly analysis was returned.",
-        raw: payload.raw ?? "",
+        raw: payload.text ?? "",
         summary: payload.summary ?? {
           totalRevenue: 0,
           totalExpenses: 0,

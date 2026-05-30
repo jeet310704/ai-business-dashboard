@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Bell, Menu, Search } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -9,7 +11,34 @@ interface TopbarProps {
   title?: string;
 }
 
+function getInitials(name: string, email: string): string {
+  const trimmed = name.trim();
+  if (trimmed) {
+    return trimmed
+      .split(/\s+/)
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  }
+  return email.slice(0, 2).toUpperCase();
+}
+
 export function Topbar({ onMenuClick, title = "Dashboard" }: TopbarProps) {
+  const [initials, setInitials] = useState("··");
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      const name: string =
+        (user.user_metadata?.full_name as string | undefined) ??
+        (user.user_metadata?.name as string | undefined) ??
+        "";
+      setInitials(getInitials(name, user.email ?? ""));
+    });
+  }, []);
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border/60 bg-background/80 px-4 backdrop-blur-md lg:px-6">
       <Button
@@ -44,7 +73,7 @@ export function Topbar({ onMenuClick, title = "Dashboard" }: TopbarProps) {
           className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-muted text-xs font-medium text-muted-foreground"
           aria-label="User avatar"
         >
-          JD
+          {initials}
         </div>
       </div>
     </header>

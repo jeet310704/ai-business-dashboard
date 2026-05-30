@@ -1,18 +1,42 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
-import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-const themes = [
+type ThemeId = "dark" | "light" | "system";
+
+const themes: { id: ThemeId; label: string; icon: typeof Moon }[] = [
   { id: "dark", label: "Dark", icon: Moon },
   { id: "light", label: "Light", icon: Sun },
   { id: "system", label: "System", icon: Monitor },
-] as const;
+];
+
+function applyTheme(themeId: ThemeId) {
+  const resolved =
+    themeId === "system"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : themeId;
+  document.documentElement.className = resolved;
+  localStorage.setItem("theme", themeId);
+}
 
 export function AppearanceSettings() {
-  const [selected, setSelected] = useState("dark");
+  const [selected, setSelected] = useState<ThemeId>("dark");
+
+  // Read saved preference on mount
+  useEffect(() => {
+    const saved = (localStorage.getItem("theme") as ThemeId | null) ?? "dark";
+    setSelected(saved);
+  }, []);
+
+  const handleSelect = (id: ThemeId) => {
+    setSelected(id);
+    applyTheme(id);
+  };
 
   return (
     <Card>
@@ -27,7 +51,7 @@ export function AppearanceSettings() {
             <button
               key={id}
               type="button"
-              onClick={() => setSelected(id)}
+              onClick={() => handleSelect(id)}
               className={cn(
                 "flex flex-col items-center gap-2 rounded-lg border p-4 transition-colors",
                 selected === id
@@ -41,7 +65,7 @@ export function AppearanceSettings() {
           ))}
         </div>
         <p className="mt-4 text-xs text-muted-foreground">
-          Theme switching is UI-only in this preview. Dark mode is active by default.
+          Theme preference is saved and applied on every page load.
         </p>
       </CardContent>
     </Card>

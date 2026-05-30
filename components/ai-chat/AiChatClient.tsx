@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Send } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { DataScopeFilter } from "@/components/dashboard/data-scope-filter";
 import type { DataScopeFilter as DataScopeFilterType } from "@/lib/data-scope";
@@ -26,11 +25,6 @@ interface DatasetSummary {
   insights: number;
 }
 
-interface ChatHistoryResponse {
-  messages: ServerChatMessage[];
-  datasetSummary: DatasetSummary;
-}
-
 export default function AiChatClient() {
   const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -44,8 +38,6 @@ export default function AiChatClient() {
 
   async function loadHistory() {
     setInitialLoading(true);
-    console.log("[DEBUG] AiChatClient: Loading history with scope:", scope);
-    
     try {
       const response = await fetch("/api/ai-chat-history", {
         method: "POST",
@@ -60,7 +52,6 @@ export default function AiChatClient() {
         throw new Error("Failed to load chat history");
       }
       const json = await response.json();
-      console.log("[DEBUG] AiChatClient: History API Response:", json);
 
       const messagesData: ServerChatMessage[] = Array.isArray(json)
         ? json
@@ -117,9 +108,6 @@ export default function AiChatClient() {
     setLoading(true);
     setError("");
 
-    const filters = scope;
-    console.log("Sending scope filters to API:", filters);
-
     try {
       const response = await fetch("/api/ai-chat", {
         method: "POST",
@@ -127,7 +115,6 @@ export default function AiChatClient() {
         body: JSON.stringify({ message: input, scope }),
       });
       const data = await response.json();
-      console.log("[DEBUG] AiChatClient: Chat API Response:", data);
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to get response");
@@ -136,7 +123,7 @@ export default function AiChatClient() {
       const assistantMessage: ChatMessage = {
         id: `temp-${Date.now()}-assistant`,
         role: "assistant",
-        content: data.message,
+        content: data.text ?? "No response received.",
         timestamp: new Date().toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",

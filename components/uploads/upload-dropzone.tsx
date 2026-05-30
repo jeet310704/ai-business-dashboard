@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileSpreadsheet, FileText, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -49,29 +49,53 @@ interface ValidationResult {
 const uploadAliases: Record<UploadType, Record<string, string[]>> = {
   sales: {
     date: ["date", "sale_date", "sales_date"],
-    product: ["product", "product_name", "item_name", "item"],
+    product_name: ["product", "product_name", "item_name", "item"],
     category: ["category", "product_category", "category_name"],
     quantity: ["quantity", "qty", "units"],
+    unit_price: ["unit_price", "price", "cost"],
     revenue: ["revenue", "amount", "total_revenue", "sales_amount"],
+    customer_name: ["customer_name", "name", "client_name"],
+    customer_email: ["customer_email", "email", "email_address", "contact_email"],
+    payment_method: ["payment_method", "method", "payment"],
+    region: ["region", "location", "territory"],
   },
   expenses: {
     date: ["date", "expense_date", "paid_date"],
-    expense_category: ["expense_category", "category", "category_name"],
+    expense_name: ["expense_name", "expense", "name", "description"],
+    category: ["category", "expense_category", "category_name"],
     amount: ["amount", "expense_amount", "cost"],
     vendor: ["vendor", "merchant", "payee"],
+    payment_method: ["payment_method", "method", "payment"],
+    notes: ["notes", "note", "description", "memo"],
   },
   inventory: {
-    item_name: ["item_name", "product", "product_name", "item"],
-    stock: ["stock", "quantity", "qty"],
-    reorder_level: ["reorder_level", "reorder_level", "reorder"],
+    date: ["date", "inventory_date", "stock_date", "received_date"],
+    product_name: ["product_name", "item_name", "product", "item"],
+    category: ["category", "product_category", "category_name"],
+    sku: ["sku", "product_sku"],
+    stock_quantity: ["stock_quantity", "stock", "quantity", "qty"],
+    reorder_level: ["reorder_level", "reorder", "reorder_qty"],
     unit_cost: ["unit_cost", "price", "cost"],
+    supplier: ["supplier", "vendor", "manufacturer"],
   },
   customers: {
     customer_name: ["customer_name", "name", "client_name"],
-    email: ["email", "email_address", "contact_email"],
-    total_spent: ["total_spent", "spending", "amount_spent"],
+    customer_email: ["customer_email", "email", "email_address", "contact_email"],
+    phone: ["phone", "phone_number", "contact_number"],
+    city: ["city", "location", "town"],
+    state: ["state", "region", "province"],
+    signup_date: ["signup_date", "sign_up_date", "registration_date", "registered_date"],
+    total_spend: ["total_spend", "spending", "amount_spent"],
+    orders_count: ["orders_count", "order_count", "orders", "orders_total"],
     last_purchase_date: ["last_purchase_date", "purchase_date", "last_order_date"],
   },
+};
+
+const requiredFields: Record<UploadType, string[]> = {
+  sales: ["date", "product_name", "quantity", "revenue"],
+  expenses: ["date", "expense_name", "amount", "vendor"],
+  inventory: ["date", "product_name", "category", "sku", "stock_quantity", "reorder_level", "unit_cost", "supplier"],
+  customers: ["customer_name", "customer_email", "total_spend", "orders_count"],
 };
 
 const formatHeader = (value: string) =>
@@ -80,6 +104,74 @@ const formatHeader = (value: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
+
+const uploadTypeDetectionRules: Array<{ type: UploadType; aliases: string[][] }> = [
+  {
+    type: "sales",
+    aliases: [
+      ["date"],
+      ["product_name", "product", "item_name", "item"],
+      ["quantity", "qty", "units"],
+      ["revenue", "amount", "total_revenue", "sales_amount"],
+    ],
+  },
+  {
+    type: "expenses",
+    aliases: [
+      ["date"],
+      ["expense_name", "expense", "expense_name"],
+      ["amount", "expense_amount", "cost"],
+      ["vendor", "merchant", "payee"],
+    ],
+  },
+  {
+    type: "inventory",
+    aliases: [
+      ["date"],
+      ["sku", "product_sku"],
+      ["stock_quantity", "stock", "quantity", "qty"],
+      ["reorder_level", "reorder", "reorder_qty"],
+    ],
+  },
+  {
+    type: "customers",
+    aliases: [
+      ["customer_name", "name", "client_name"],
+      ["customer_email", "email", "email_address", "contact_email"],
+      ["total_spend", "spending", "amount_spent"],
+    ],
+  },
+];
+
+function detectUploadType(columns: string[]): UploadType | null {
+  const normalizedColumns = new Set(columns.map(formatHeader));
+
+  for (const rule of uploadTypeDetectionRules) {
+    const matches = rule.aliases.every((aliasGroup) =>
+      aliasGroup.some((alias) => normalizedColumns.has(formatHeader(alias)))
+    );
+
+    if (matches) {
+      return rule.type;
+    }
+  }
+
+  return null;
+}
+
+async function extractHeaderColumns(file: File): Promise<string[]> {
+  const parsed = await new Promise<Papa.ParseResult<Record<string, string>>>((resolve, reject) => {
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: false,
+      complete: (results) => resolve(results),
+      error: (error) => reject(error),
+    });
+  });
+
+  return (parsed.meta.fields ?? []).map(formatHeader);
+}
 
 function getQualityLabel(result: ValidationResult): ValidationQuality {
   if (result.hasCriticalError || result.totalRows === 0) {
@@ -111,6 +203,11 @@ function normalizeHeader(uploadType: UploadType, header: string) {
 }
 
 async function validateUploadFile(file: File, uploadType: UploadType): Promise<ValidationResult> {
+  const validatorName = `${uploadType} validator`;
+  console.log("Upload type received:", uploadType);
+  console.log("Validator selected:", validatorName);
+  console.log("Parser selected: Papa.parse");
+
   const parsed = await new Promise<Papa.ParseResult<Record<string, string>>>((resolve, reject) => {
     Papa.parse<Record<string, string>>(file, {
       header: true,
@@ -123,9 +220,12 @@ async function validateUploadFile(file: File, uploadType: UploadType): Promise<V
   });
 
   const aliasMap = uploadAliases[uploadType];
+  const requiredKeys = requiredFields[uploadType];
   const expectedKeys = Object.keys(aliasMap);
   const columns = parsed.meta.fields ?? [];
-  const missingColumns = expectedKeys.filter((key) => !columns.includes(key)).length;
+  const missingRequiredColumns = requiredKeys.filter((key) => !columns.includes(key)).length;
+
+  console.log("CSV columns:", columns);
 
   const issues: ValidationIssue[] = [];
   const sampleRows: Record<string, string>[] = [];
@@ -143,7 +243,7 @@ async function validateUploadFile(file: File, uploadType: UploadType): Promise<V
     });
   }
 
-  if (missingColumns > 0) {
+  if (missingRequiredColumns > 0) {
     issues.push({
       message: "Required columns are missing or inconsistent with the selected upload type.",
       severity: "error",
@@ -183,24 +283,27 @@ async function validateUploadFile(file: File, uploadType: UploadType): Promise<V
 
     if (uploadType === "sales") {
       const dateValue = getValue("date");
-      const product = getValue("product");
+      const productName = getValue("product_name");
       const category = getValue("category");
       const quantityValue = getValue("quantity");
+      const unitPriceValue = getValue("unit_price");
       const revenueValue = getValue("revenue");
+      const customerName = getValue("customer_name");
+      const customerEmail = getValue("customer_email");
+      const paymentMethod = getValue("payment_method");
+      const region = getValue("region");
 
       const date = new Date(dateValue);
       const quantity = Number(quantityValue);
+      const unitPrice = Number(unitPriceValue);
       const revenue = Number(revenueValue);
       const nowIso = new Date().toISOString();
 
       if (!dateValue || isNaN(date.getTime())) {
         markFieldError("date", "Invalid or missing date.");
       }
-      if (!product) {
-        markFieldError("product", "Empty product name.");
-      }
-      if (!category) {
-        markFieldError("category", "Empty category.");
+      if (!productName) {
+        markFieldError("product_name", "Empty product name.");
       }
       if (!quantityValue || isNaN(quantity) || !Number.isInteger(quantity) || quantity < 0) {
         markFieldError("quantity", "Invalid quantity. Use a non-negative integer.");
@@ -208,23 +311,36 @@ async function validateUploadFile(file: File, uploadType: UploadType): Promise<V
       if (!revenueValue || isNaN(revenue) || revenue < 0) {
         markFieldError("revenue", "Invalid revenue. Use a non-negative number.");
       }
+      if (unitPriceValue && (isNaN(unitPrice) || unitPrice < 0)) {
+        markFieldWarning("unit_price", "Invalid unit price. Use a non-negative number.");
+      }
+      if (customerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+        markFieldWarning("customer_email", "Enter a valid email address.");
+      }
 
       if (!rowIssues.length) {
-        record.product_name = product;
-        record.category = category;
+        record.product_name = productName;
+        record.category = category || null;
         record.quantity = Math.floor(quantity);
+        record.unit_price = isNaN(unitPrice) ? null : unitPrice;
         record.revenue = revenue;
+        record.customer_name = customerName || null;
+        record.customer_email = customerEmail || null;
+        record.payment_method = paymentMethod || null;
+        record.region = region || null;
         record.sale_date = date.toISOString();
-        record.record_date = date.toISOString().slice(0, 10);
         record.created_at = nowIso;
       }
     }
 
     if (uploadType === "expenses") {
       const dateValue = getValue("date");
-      const category = getValue("expense_category");
+      const expenseName = getValue("expense_name");
+      const category = getValue("category");
       const amountValue = getValue("amount");
       const vendor = getValue("vendor");
+      const paymentMethod = getValue("payment_method");
+      const notes = getValue("notes");
 
       const date = new Date(dateValue);
       const amount = Number(amountValue);
@@ -233,8 +349,8 @@ async function validateUploadFile(file: File, uploadType: UploadType): Promise<V
       if (!dateValue || isNaN(date.getTime())) {
         markFieldError("date", "Invalid or missing date.");
       }
-      if (!category) {
-        markFieldError("expense_category", "Empty expense category.");
+      if (!expenseName) {
+        markFieldError("expense_name", "Empty expense name.");
       }
       if (!vendor) {
         markFieldError("vendor", "Empty vendor name.");
@@ -244,79 +360,110 @@ async function validateUploadFile(file: File, uploadType: UploadType): Promise<V
       }
 
       if (!rowIssues.length) {
-        record.category = category;
+        record.expense_name = expenseName;
+        record.category = category || null;
         record.amount = amount;
         record.vendor = vendor;
+        record.payment_method = paymentMethod || null;
+        record.notes = notes || null;
         record.expense_date = date.toISOString();
-        record.record_date = date.toISOString().slice(0, 10);
         record.created_at = nowIso;
       }
     }
 
     if (uploadType === "inventory") {
-      const itemName = getValue("item_name");
-      const stockValue = getValue("stock");
+      const inventoryDateValue = getValue("date");
+      const productName = getValue("product_name");
+      const category = getValue("category");
+      const sku = getValue("sku");
+      const stockValue = getValue("stock_quantity");
       const reorderValue = getValue("reorder_level");
       const unitCostValue = getValue("unit_cost");
+      const supplier = getValue("supplier");
 
-      const stock = Number(stockValue);
+      const inventoryDate = new Date(inventoryDateValue);
+      const stockQuantity = Number(stockValue);
       const reorderLevel = Number(reorderValue);
       const unitCost = Number(unitCostValue);
-      const now = new Date();
-      const nowIso = now.toISOString();
+      const nowIso = new Date().toISOString();
 
-      if (!itemName) {
-        markFieldError("item_name", "Empty item name.");
+      if (!inventoryDateValue || isNaN(inventoryDate.getTime())) {
+        markFieldError("date", "Invalid or missing inventory date.");
       }
-      if (!stockValue || isNaN(stock) || !Number.isInteger(stock) || stock < 0) {
-        markFieldError("stock", "Invalid stock quantity. Use a non-negative integer.");
+      if (!productName) {
+        markFieldError("product_name", "Empty product name.");
+      }
+      if (!stockValue || isNaN(stockQuantity) || !Number.isInteger(stockQuantity) || stockQuantity < 0) {
+        markFieldError("stock_quantity", "Invalid stock quantity. Use a non-negative integer.");
       }
       if (!reorderValue || isNaN(reorderLevel) || !Number.isInteger(reorderLevel) || reorderLevel < 0) {
         markFieldError("reorder_level", "Invalid reorder level. Use a non-negative integer.");
       }
-      if (unitCostValue && isNaN(unitCost)) {
-        markFieldWarning("unit_cost", "Malformed unit cost. Leave blank or use a number.");
+      if (!unitCostValue || isNaN(unitCost) || unitCost < 0) {
+        markFieldError("unit_cost", "Invalid unit cost. Use a non-negative number.");
       }
 
       if (!rowIssues.length) {
-        record.item_name = itemName;
-        record.stock = Math.floor(stock);
+        record.inventory_date = inventoryDate.toISOString();
+        record.product_name = productName;
+        record.category = category || null;
+        record.sku = sku || null;
+        record.stock_quantity = Math.floor(stockQuantity);
         record.reorder_level = Math.floor(reorderLevel);
-        record.unit_cost = isNaN(unitCost) ? null : unitCost;
-        record.record_date = now.toISOString().slice(0, 10);
+        record.unit_cost = unitCost;
+        record.supplier = supplier || null;
         record.created_at = nowIso;
       }
     }
 
     if (uploadType === "customers") {
       const customerName = getValue("customer_name");
-      const email = getValue("email");
-      const totalSpentValue = getValue("total_spent");
-      const purchaseDateValue = getValue("last_purchase_date");
+      const customerEmail = getValue("customer_email");
+      const phone = getValue("phone");
+      const city = getValue("city");
+      const state = getValue("state");
+      const signupDateValue = getValue("signup_date");
+      const totalSpendValue = getValue("total_spend");
+      const ordersCountValue = getValue("orders_count");
+      const lastPurchaseDateValue = getValue("last_purchase_date");
 
-      const totalSpent = Number(totalSpentValue);
-      const purchaseDate = new Date(purchaseDateValue);
+      const totalSpend = Number(totalSpendValue);
+      const ordersCount = Number(ordersCountValue);
+      const signupDate = new Date(signupDateValue);
+      const lastPurchaseDate = new Date(lastPurchaseDateValue);
       const nowIso = new Date().toISOString();
 
       if (!customerName) {
         markFieldError("customer_name", "Empty customer name.");
       }
-      if (!email) {
-        markFieldError("email", "Missing email address.");
+      if (!customerEmail) {
+        markFieldError("customer_email", "Missing email address.");
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) {
+        markFieldError("customer_email", "Invalid email address.");
       }
-      if (!totalSpentValue || isNaN(totalSpent) || totalSpent < 0) {
-        markFieldError("total_spent", "Invalid total spent. Use a non-negative number.");
+      if (!totalSpendValue || isNaN(totalSpend) || totalSpend < 0) {
+        markFieldError("total_spend", "Invalid total spend. Use a non-negative number.");
       }
-      if (!purchaseDateValue || isNaN(purchaseDate.getTime())) {
-        markFieldError("last_purchase_date", "Invalid or missing purchase date.");
+      if (!ordersCountValue || isNaN(ordersCount) || !Number.isInteger(ordersCount) || ordersCount < 0) {
+        markFieldError("orders_count", "Invalid orders count. Use a non-negative integer.");
+      }
+      if (signupDateValue && isNaN(signupDate.getTime())) {
+        markFieldWarning("signup_date", "Invalid signup date. Leave blank or use a valid date.");
+      }
+      if (lastPurchaseDateValue && isNaN(lastPurchaseDate.getTime())) {
+        markFieldWarning("last_purchase_date", "Invalid last purchase date. Leave blank or use a valid date.");
       }
 
       if (!rowIssues.length) {
         record.customer_name = customerName;
-        record.email = email;
-        record.total_spent = totalSpent;
-        record.last_purchase_date = purchaseDate.toISOString();
-        record.record_date = purchaseDate.toISOString().slice(0, 10);
+        record.customer_email = customerEmail;
+        record.phone = phone || null;
+        record.city = city || null;
+        record.state = state || null;
+        record.signup_date = signupDateValue && !isNaN(signupDate.getTime()) ? signupDate.toISOString() : null;
+        record.total_spend = totalSpend;
+        record.orders_count = Math.floor(ordersCount);
+        record.last_purchase_date = lastPurchaseDateValue && !isNaN(lastPurchaseDate.getTime()) ? lastPurchaseDate.toISOString() : null;
         record.created_at = nowIso;
       }
     }
@@ -357,7 +504,7 @@ async function validateUploadFile(file: File, uploadType: UploadType): Promise<V
     totalRows,
     rejectedRows,
     duplicateRows,
-    missingColumns,
+    missingColumns: missingRequiredColumns,
     invalidRows,
     warningCount,
     issues,
@@ -369,7 +516,7 @@ async function validateUploadFile(file: File, uploadType: UploadType): Promise<V
   });
 
   const suggestedFixes: string[] = [];
-  if (missingColumns > 0) {
+  if (missingRequiredColumns > 0) {
     suggestedFixes.push("Check your CSV headers and make sure required columns match the selected upload type.");
   }
   if (duplicateRows > 0) {
@@ -385,7 +532,7 @@ async function validateUploadFile(file: File, uploadType: UploadType): Promise<V
     totalRows,
     rejectedRows,
     duplicateRows,
-    missingColumns,
+    missingColumns: missingRequiredColumns,
     invalidRows,
     warningCount,
     issues,
@@ -423,6 +570,9 @@ export function UploadDropzone({ formats, businessId, userId }: UploadDropzonePr
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [uploadType, setUploadType] = useState<UploadType>("sales");
+  const [autoDetectedUploadType, setAutoDetectedUploadType] = useState<UploadType | null>(null);
+  const [detectionMessage, setDetectionMessage] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
 
@@ -438,7 +588,7 @@ export function UploadDropzone({ formats, businessId, userId }: UploadDropzonePr
   }, []);
 
   const handleValidateFile = useCallback(
-    async (file: File) => {
+    async (file: File, type: UploadType) => {
       if (uploading || parsing) return;
       setErrorMessage("");
       setSuccessMessage("");
@@ -446,7 +596,7 @@ export function UploadDropzone({ formats, businessId, userId }: UploadDropzonePr
       setParsing(true);
 
       try {
-        const result = await validateUploadFile(file, uploadType);
+        const result = await validateUploadFile(file, type);
         setValidationResult(result);
         setSelectedFile(file);
       } catch (error: any) {
@@ -455,139 +605,197 @@ export function UploadDropzone({ formats, businessId, userId }: UploadDropzonePr
         setParsing(false);
       }
     },
-    [uploadType, uploading, parsing]
+    [uploading, parsing]
   );
 
   const handleImport = useCallback(
     async (allowWarnings = false) => {
-      if (!selectedFile) {
+      if (selectedFiles.length === 0) {
         setErrorMessage("No file selected for import.");
-        return;
-      }
-      if (!validationResult) {
-        setErrorMessage("Validation must complete before importing.");
-        return;
-      }
-      if (validationResult.hasCriticalError) {
-        setErrorMessage("Critical validation issues prevent import.");
-        return;
-      }
-      if (!allowWarnings && validationResult.warningCount > 0) {
-        setErrorMessage("Review warnings before importing or choose Import Anyway.");
         return;
       }
 
       setUploading(true);
-      setProgress(10);
+      setProgress(0);
       setErrorMessage("");
       setSuccessMessage("");
 
-      const extension = selectedFile.name.split(".").pop()?.toLowerCase() ?? "";
-      const fileType: UploadFileType = extension === "csv" ? "csv" : "xlsx";
-      const storagePath = `${businessId}/${userId}/${Date.now()}-${selectedFile.name}`;
       const supabase = createClient();
+      let totalRowsImported = 0;
 
-      const { error: uploadError } = await supabase.storage
-        .from("business-uploads")
-        .upload(storagePath, selectedFile, { upsert: false });
+      try {
+        for (let index = 0; index < selectedFiles.length; index += 1) {
+          const file = selectedFiles[index];
+          setCurrentFileName(file.name);
+          setProgress(Math.round((index / selectedFiles.length) * 100));
 
-      if (uploadError) {
-        setErrorMessage(uploadError.message || "File upload failed.");
-        resetUploadState();
-        return;
-      }
+          const headerColumns = await extractHeaderColumns(file);
+          const detectedType = detectUploadType(headerColumns);
+          const fileUploadType = detectedType ?? uploadType;
 
-      setProgress(35);
+          console.log("Upload type received:", fileUploadType);
+          console.log("CSV columns:", headerColumns);
+          console.log("Validator selected:", fileUploadType);
 
-      const {
-        data: insertData,
-        error: insertError,
-      } = await supabase
-        .from("uploads")
-        .insert({
-          business_id: businessId,
-          file_name: selectedFile.name,
-          file_type: fileType,
-          upload_type: uploadType,
-          uploaded_at: new Date().toISOString(),
-          status: "uploaded",
-        })
-        .select("id")
-        .single();
+          if (!fileUploadType) {
+            throw new Error("Could not detect CSV type. Please select upload type manually.");
+          }
 
-      if (insertError || !insertData) {
-        setErrorMessage(insertError?.message || "Failed to save upload record.");
-        resetUploadState();
-        return;
-      }
+          const validation = await validateUploadFile(file, fileUploadType);
+          if (validation.hasCriticalError) {
+            throw new Error(`Critical validation issues prevent import for ${file.name}.`);
+          }
+          if (!allowWarnings && validation.warningCount > 0) {
+            throw new Error(`Review warnings before importing ${file.name}.`);
+          }
 
-      const uploadId = insertData.id;
-      setProgress(50);
+          const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+          const fileType: UploadFileType = extension === "csv" ? "csv" : "xlsx";
+          const storagePath = `${businessId}/${userId}/${Date.now()}-${file.name}`;
 
-      await supabase.from("uploads").update({ status: "processing" }).eq("id", uploadId);
-      setProgress(60);
+          const { error: uploadError } = await supabase.storage
+            .from("business-uploads")
+            .upload(storagePath, file, { upsert: false });
 
-      if (extension === "csv" && validationResult.validRecords.length > 0) {
-        const insertTable =
-          uploadType === "sales"
-            ? "sales_records"
-            : uploadType === "expenses"
-            ? "expense_records"
-            : uploadType === "inventory"
-            ? "inventory_records"
-            : "customer_records";
+          if (uploadError) {
+            throw new Error(uploadError.message || "File upload failed.");
+          }
 
-        const recordsToInsert = validationResult.validRecords.map((record) => ({
-          ...record,
-          business_id: businessId,
-          upload_id: uploadId,
-        }));
+          setProgress(Math.round((index / selectedFiles.length) * 100) + 20);
 
-        const { error: insertTableError } = await supabase.from(insertTable).insert(recordsToInsert);
-        if (insertTableError) {
-          await supabase.from("uploads").update({ status: "failed" }).eq("id", uploadId);
-          setErrorMessage(insertTableError.message || "Failed to import records.");
-          resetUploadState();
-          return;
+          const {
+            data: insertData,
+            error: insertError,
+          } = await supabase
+            .from("uploads")
+            .insert({
+              business_id: businessId,
+              file_name: file.name,
+              file_type: fileType,
+              upload_type: fileUploadType,
+              uploaded_at: new Date().toISOString(),
+              status: "uploaded",
+            })
+            .select("id")
+            .single();
+
+          if (insertError || !insertData) {
+            throw new Error(insertError?.message || "Failed to save upload record.");
+          }
+
+          const uploadId = insertData.id;
+          setProgress(Math.round((index / selectedFiles.length) * 100) + 40);
+
+          await supabase.from("uploads").update({ status: "processing" }).eq("id", uploadId);
+          setProgress(Math.round((index / selectedFiles.length) * 100) + 60);
+
+          if (extension === "csv" && validation.validRecords.length > 0) {
+            const insertTable =
+              fileUploadType === "sales"
+                ? "sales_records"
+                : fileUploadType === "expenses"
+                ? "expense_records"
+                : fileUploadType === "inventory"
+                ? "inventory_records"
+                : "customer_records";
+
+            console.log("Destination table:", insertTable);
+
+            const recordsToInsert = validation.validRecords.map((record) => ({
+              ...record,
+              business_id: businessId,
+              upload_id: uploadId,
+            }));
+
+            const { error: insertTableError } = await supabase.from(insertTable).insert(recordsToInsert);
+            if (insertTableError) {
+              await supabase.from("uploads").update({ status: "failed" }).eq("id", uploadId);
+              throw new Error(insertTableError.message || "Failed to import records.");
+            }
+          }
+
+          const summaryFields: Record<string, unknown> = {
+            validation_score: validation.quality,
+            warning_count: validation.warningCount,
+            rejected_rows: validation.rejectedRows,
+            duplicate_rows: validation.duplicateRows,
+          };
+
+          const { error: metadataError } = await supabase
+            .from("uploads")
+            .update(summaryFields)
+            .eq("id", uploadId);
+
+          if (metadataError) {
+            console.warn("Upload metadata update skipped:", metadataError.message);
+          }
+
+          await supabase.from("uploads").update({ status: "completed" }).eq("id", uploadId);
+          totalRowsImported += validation.estimatedImportCount;
+          setProgress(Math.round(((index + 1) / selectedFiles.length) * 100));
         }
-      }
 
-      const summaryFields: Record<string, unknown> = {
-        validation_score: validationResult.quality,
-        warning_count: validationResult.warningCount,
-        rejected_rows: validationResult.rejectedRows,
-        duplicate_rows: validationResult.duplicateRows,
-      };
-
-      const { error: metadataError } = await supabase
-        .from("uploads")
-        .update(summaryFields)
-        .eq("id", uploadId);
-
-      if (metadataError) {
-        console.warn("Upload metadata update skipped:", metadataError.message);
-      }
-
-      await supabase.from("uploads").update({ status: "completed" }).eq("id", uploadId);
-      setProgress(100);
-      setSuccessMessage(`Imported ${validationResult.estimatedImportCount} rows from ${selectedFile.name}.`);
-      setTimeout(() => {
+        setSuccessMessage(`Imported ${totalRowsImported} rows from ${selectedFiles.length} file${
+          selectedFiles.length === 1 ? "" : "s"
+        }.`);
+        setTimeout(() => {
+          resetUploadState();
+        }, 800);
+        router.refresh();
+      } catch (error: any) {
+        setErrorMessage(error?.message || "Unable to upload selected files.");
         resetUploadState();
-      }, 800);
-      router.refresh();
+      }
     },
-    [businessId, router, resetUploadState, selectedFile, uploadType, userId, validationResult]
+    [businessId, router, resetUploadState, selectedFiles, uploadType, userId]
   );
 
   const handleFiles = useCallback(
-    (files: FileList | null) => {
-      const file = files?.[0];
-      if (file) {
-        handleValidateFile(file);
+    async (files: FileList | null) => {
+      const fileArray = files ? Array.from(files) : [];
+      if (fileArray.length === 0) {
+        return;
+      }
+
+      setSelectedFiles(fileArray);
+      setErrorMessage("");
+      setSuccessMessage("");
+      setDetectionMessage(null);
+      setSelectedFile(fileArray[0]);
+      setCurrentFileName(
+        fileArray.length === 1 ? fileArray[0].name : `${fileArray.length} files selected`
+      );
+
+      const firstFile = fileArray[0];
+      console.log("Selected file:", firstFile);
+
+      try {
+        const headerColumns = await extractHeaderColumns(firstFile);
+        const detectedType = detectUploadType(headerColumns);
+
+        if (detectedType) {
+          console.log("Auto detected upload type:", detectedType);
+          setAutoDetectedUploadType(detectedType);
+          setUploadType(detectedType);
+          setDetectionMessage(null);
+          await handleValidateFile(firstFile, detectedType);
+        } else {
+          setAutoDetectedUploadType(null);
+          setDetectionMessage("Could not detect CSV type. Please select upload type manually.");
+          await handleValidateFile(firstFile, uploadType);
+        }
+      } catch (error: any) {
+        setErrorMessage(error?.message || "Unable to parse the CSV file.");
       }
     },
-    [handleValidateFile]
+    [handleValidateFile, uploadType]
   );
+
+  useEffect(() => {
+    if (selectedFiles.length > 0 && selectedFile && !uploading && !parsing) {
+      handleValidateFile(selectedFile, uploadType);
+    }
+  }, [selectedFiles, selectedFile, uploadType, handleValidateFile, uploading, parsing]);
 
   const validationSummary = useMemo(() => {
     if (!validationResult) {
@@ -730,9 +938,13 @@ export function UploadDropzone({ formats, businessId, userId }: UploadDropzonePr
       <input
         ref={fileInputRef}
         type="file"
+        multiple
         accept={acceptedFileTypes}
         className="hidden"
-        onChange={(event) => handleFiles(event.target.files)}
+        onChange={(event) => {
+          console.log("Selected file:", event.target.files?.[0]);
+          handleFiles(event.target.files);
+        }}
       />
 
       <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
@@ -745,21 +957,27 @@ export function UploadDropzone({ formats, businessId, userId }: UploadDropzonePr
             value={uploadType}
             onChange={(event) => setUploadType(event.target.value as UploadType)}
             className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-            disabled={uploading || parsing || Boolean(selectedFile)}
+            disabled={uploading || parsing}
           >
             <option value="sales">Sales Data</option>
             <option value="expenses">Expense Data</option>
             <option value="inventory">Inventory Data</option>
             <option value="customers">Customer Data</option>
           </select>
+          {autoDetectedUploadType && !detectionMessage ? (
+            <p className="mt-2 text-sm text-foreground">Detected upload type: {autoDetectedUploadType}</p>
+          ) : null}
+          {detectionMessage ? (
+            <p className="mt-2 text-sm text-amber-500">{detectionMessage}</p>
+          ) : null}
         </div>
         <div className="rounded-lg border border-border bg-muted/20 p-3">
           <p className="text-sm font-medium">CSV format</p>
           <p className="mt-2 text-xs text-muted-foreground">
-            {uploadType === "sales" && "date,product,category,quantity,revenue"}
-            {uploadType === "expenses" && "date,expense_category,amount,vendor"}
-            {uploadType === "inventory" && "item_name,stock,reorder_level,unit_cost"}
-            {uploadType === "customers" && "customer_name,email,total_spent,last_purchase_date"}
+            {uploadType === "sales" && "date,product_name,category,quantity,revenue"}
+            {uploadType === "expenses" && "date,expense_name,category,amount,vendor"}
+            {uploadType === "inventory" && "inventory_date,product_name,stock_quantity,reorder_level,unit_cost"}
+            {uploadType === "customers" && "customer_name,customer_email,total_spend,orders_count,last_purchase_date"}
           </p>
         </div>
       </div>
@@ -791,7 +1009,10 @@ export function UploadDropzone({ formats, businessId, userId }: UploadDropzonePr
           </p>
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              console.log("Browse Files clicked");
+              fileInputRef.current?.click();
+            }}
             disabled={uploading || parsing}
             className="mt-6 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
           >

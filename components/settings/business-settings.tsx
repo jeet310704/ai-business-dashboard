@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { BusinessInfo } from "@/types";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,13 +10,46 @@ import { Label } from "@/components/ui/label";
 
 interface BusinessSettingsProps {
   business: BusinessInfo;
+  businessId: string;
 }
 
-export function BusinessSettings({ business }: BusinessSettingsProps) {
+export function BusinessSettings({ business, businessId }: BusinessSettingsProps) {
   const [form, setForm] = useState(business);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
 
   const update = (key: keyof BusinessInfo, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+    setStatus("idle");
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setStatus("idle");
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("businesses")
+        .update({
+          name: form.companyName.trim(),
+          industry: form.industry.trim(),
+        })
+        .eq("id", businessId);
+
+      if (error) {
+        setErrorMsg(error.message);
+        setStatus("error");
+      } else {
+        setStatus("saved");
+      }
+    } catch (err) {
+      setErrorMsg("Unexpected error. Please try again.");
+      setStatus("error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -67,7 +101,18 @@ export function BusinessSettings({ business }: BusinessSettingsProps) {
             />
           </article>
         </div>
-        <Button>Update business info</Button>
+
+        <div className="flex items-center gap-3">
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Update business info"}
+          </Button>
+          {status === "saved" && (
+            <p className="text-sm text-emerald-500">Business info updated.</p>
+          )}
+          {status === "error" && (
+            <p className="text-sm text-destructive">{errorMsg || "Failed to save."}</p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

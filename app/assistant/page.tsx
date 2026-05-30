@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ChatPanel } from "@/components/assistant/chat-panel";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { chatMessages, promptSuggestions } from "@/lib/mock-data";
+import { promptSuggestions } from "@/lib/mock-data";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 
 export default async function AssistantPage() {
@@ -158,7 +158,7 @@ export default async function AssistantPage() {
           </CardContent>
         </Card>
 
-        <ChatPanel initialMessages={chatMessages} suggestions={promptSuggestions} />
+        <ChatPanel initialMessages={[]} suggestions={promptSuggestions} />
       </div>
     </DashboardShell>
   );

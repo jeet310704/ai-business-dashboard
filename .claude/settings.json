@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const p=require\\('./node_modules/@google/genai/package.json'\\); console.log\\('version:', p.version\\); const ai=require\\('./node_modules/@google/genai'\\); console.log\\('exports:', Object.keys\\(ai\\).join\\(', '\\)\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(timeout 30 node -e ' *)",
+      "Bash(timeout 20 node -e ' *)",
+      "Bash(timeout 25 node -e ' *)",
+      "Bash(timeout 60 node -e ' *)"
+    ]
+  }
+}

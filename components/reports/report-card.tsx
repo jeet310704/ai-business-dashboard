@@ -1,15 +1,7 @@
 import type { ElementType } from "react";
-import {
-  BarChart3,
-  Download,
-  FileText,
-  Loader2,
-  Package,
-  Users,
-} from "lucide-react";
+import { BarChart3, FileText, Package, Users } from "lucide-react";
 import type { Report, ReportStatus, ReportType } from "@/types";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface ReportCardProps {
@@ -29,13 +21,12 @@ const statusConfig: Record<
 > = {
   ready: { label: "Ready", variant: "success" },
   generating: { label: "Generating", variant: "warning" },
-  scheduled: { label: "Scheduled", variant: "secondary" },
+  scheduled: { label: "No data uploaded", variant: "secondary" },
 };
 
 export function ReportCard({ report }: ReportCardProps) {
   const Icon = typeIcons[report.type];
   const status = statusConfig[report.status];
-  const canDownload = report.status === "ready";
 
   return (
     <Card className="flex flex-col border-border/60 transition-colors hover:border-border">
@@ -68,25 +59,20 @@ export function ReportCard({ report }: ReportCardProps) {
             </div>
           )}
         </dl>
-        <Button
-          variant={canDownload ? "default" : "outline"}
-          className="w-full"
-          disabled={!canDownload}
-        >
-          {report.status === "generating" ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generating...
-            </>
-          ) : canDownload ? (
-            <>
-              <Download className="h-4 w-4" />
-              Export PDF
-            </>
-          ) : (
-            "Generate later"
-          )}
-        </Button>
+
+        {report.status === "ready" ? (
+          <p className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-center text-sm text-muted-foreground">
+            Use &ldquo;Generate AI Report&rdquo; above to export
+          </p>
+        ) : report.status === "generating" ? (
+          <p className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-center text-sm text-muted-foreground">
+            Generating…
+          </p>
+        ) : (
+          <p className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-center text-sm text-muted-foreground">
+            Upload {report.type} data to enable this report
+          </p>
+        )}
       </CardContent>
     </Card>
   );

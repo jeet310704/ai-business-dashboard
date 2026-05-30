@@ -11,6 +11,11 @@ import DashboardScopeClient from "@/components/dashboard/DashboardScopeClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import {
+  applyDataScopeToQuery,
+  parseScopeFromSearchParams,
+  shouldIncludeTable,
+} from "@/lib/data-scope";
 import type { ChartDataPoint, InventoryItem, KpiMetric } from "@/types";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 
@@ -67,9 +72,23 @@ function formatMonthLabel(monthKey: string) {
   return `${monthNames[index]} ${year}`;
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await requireUser();
   const supabase = await createClient();
+  const params = await searchParams;
+  const scope = parseScopeFromSearchParams(params);
+
+  console.log("Scope received:", {
+    uploadId: scope.uploadId,
+    startDate: scope.startDate,
+    endDate: scope.endDate,
+    datasetType: scope.datasetType,
+    timeScope: scope.timeScope,
+  });
 
   const { data: business } = await supabase
     .from("businesses")
@@ -80,22 +99,46 @@ export default async function DashboardPage() {
   const [salesRecordsQuery, expenseRecordsQuery, inventoryRecordsQuery, customerRecordsQuery] =
     business
       ? await Promise.all([
-          supabase
-            .from("sales_records")
-            .select("id, product_name, category, quantity, revenue, sale_date")
-            .eq("business_id", business.id),
-          supabase
-            .from("expense_records")
-            .select("amount, expense_date")
-            .eq("business_id", business.id),
-          supabase
-            .from("inventory_records")
-            .select("id, item_name, stock, reorder_level, unit_cost")
-            .eq("business_id", business.id),
-          supabase
-            .from("customer_records")
-            .select("id, customer_name, email, total_spent")
-            .eq("business_id", business.id),
+          shouldIncludeTable("sales", scope)
+            ? applyDataScopeToQuery(
+                supabase
+                  .from("sales_records")
+                  .select("id, product_name, category, quantity, revenue, sale_date")
+                  .eq("business_id", business.id),
+                scope,
+                "sale_date"
+              )
+            : Promise.resolve({ data: [] as SalesRecord[], error: null }),
+          shouldIncludeTable("expenses", scope)
+            ? applyDataScopeToQuery(
+                supabase
+                  .from("expense_records")
+                  .select("amount, expense_date")
+                  .eq("business_id", business.id),
+                scope,
+                "expense_date"
+              )
+            : Promise.resolve({ data: [] as ExpenseRecord[], error: null }),
+          shouldIncludeTable("inventory", scope)
+            ? applyDataScopeToQuery(
+                supabase
+                  .from("inventory_records")
+                  .select("id, item_name, stock, reorder_level, unit_cost")
+                  .eq("business_id", business.id),
+                scope,
+                "created_at"
+              )
+            : Promise.resolve({ data: [] as InventoryRecord[], error: null }),
+          shouldIncludeTable("customers", scope)
+            ? applyDataScopeToQuery(
+                supabase
+                  .from("customer_records")
+                  .select("id, customer_name, email, total_spent")
+                  .eq("business_id", business.id),
+                scope,
+                "last_purchase_date"
+              )
+            : Promise.resolve({ data: [] as CustomerRecord[], error: null }),
         ])
       : [null, null, null, null];
 
@@ -279,7 +322,7 @@ export default async function DashboardPage() {
   return (
     <DashboardShell title="Dashboard">
       <div className="space-y-6">
-        <DashboardScopeClient />
+        <DashboardScopeClient initialScope={scope} />
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm text-zinc-400">Overview</p>

@@ -1,263 +1,140 @@
 import { NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@/lib/supabase/server";
-import {
-  parseScope,
-  applyDataScopeToQuery,
-  shouldIncludeTable,
-  getScopeDescription,
-  type DataScopeFilter,
-} from "@/lib/data-scope";
+import { generateAIText } from "@/lib/gemini";
 
-async function buildReportContext(
-  businessId: string,
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  scope: DataScopeFilter
-) {
-  const salesPromise = shouldIncludeTable("sales", scope)
-    ? applyDataScopeToQuery(
-        supabase
-          .from("sales_records")
-          .select("product_name, category, revenue, sale_date")
-          .eq("business_id", businessId),
-        scope
-      )
-        .order("sale_date", { ascending: false })
-        .limit(100)
-    : Promise.resolve({ data: [] as any, error: null });
-
-  const expensePromise = shouldIncludeTable("expenses", scope)
-    ? applyDataScopeToQuery(
-        supabase
-          .from("expense_records")
-          .select("amount, category, expense_date")
-          .eq("business_id", businessId),
-        scope
-      )
-        .order("expense_date", { ascending: false })
-        .limit(100)
-    : Promise.resolve({ data: [] as any, error: null });
-
-  const inventoryPromise = shouldIncludeTable("inventory", scope)
-    ? applyDataScopeToQuery(
-        supabase
-          .from("inventory_records")
-          .select("item_name, stock, reorder_level, unit_cost")
-          .eq("business_id", businessId),
-        scope
-      )
-        .limit(100)
-    : Promise.resolve({ data: [] as any, error: null });
-
-  const customerPromise = shouldIncludeTable("customers", scope)
-    ? applyDataScopeToQuery(
-        supabase
-          .from("customer_records")
-          .select("customer_name, total_spent, email")
-          .eq("business_id", businessId),
-        scope
-      )
-        .order("total_spent", { ascending: false })
-        .limit(100)
-    : Promise.resolve({ data: [] as any, error: null });
-
-  const insightsPromise = supabase
-    .from("ai_insights")
-    .select("title, insight, severity, created_at")
-    .eq("business_id", businessId)
-    .order("created_at", { ascending: false })
-    .limit(10);
-
-  const [salesResponse, expenseResponse, inventoryResponse, customerResponse, insightsResponse] = await Promise.all([
-    salesPromise,
-    expensePromise,
-    inventoryPromise,
-    customerPromise,
-    insightsPromise,
-  ]);
-  const sales = Array.isArray(salesResponse.data) ? salesResponse.data : [];
-  const expenses = Array.isArray(expenseResponse.data) ? expenseResponse.data : [];
-  const inventory = Array.isArray(inventoryResponse.data) ? inventoryResponse.data : [];
-  const customers = Array.isArray(customerResponse.data) ? customerResponse.data : [];
-  const insights = Array.isArray(insightsResponse.data) ? insightsResponse.data : [];
-
-  const totalRevenue = sales.reduce((sum, item) => sum + Number(item.revenue ?? 0), 0);
-  const totalExpenses = expenses.reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
-  const totalCustomers = customers.length;
-  const totalInventoryItems = inventory.length;
-  const lowStockItems = inventory.filter((item) => Number(item.stock ?? 0) <= Number(item.reorder_level ?? 0)).map((item) => item.item_name ?? "Unknown");
-  const averageCustomerSpend = totalCustomers > 0 ? customers.reduce((sum, item) => sum + Number(item.total_spent ?? 0), 0) / totalCustomers : 0;
-  const topProducts = Array.from(new Set(sales.map((item) => item.product_name).filter(Boolean))).slice(0, 5);
-  const topCategories = Array.from(new Set(sales.map((item) => item.category).filter(Boolean))).slice(0, 5);
-  const datasetCounts = {
-    sales: sales.length,
-    expenses: expenses.length,
-    inventory: inventory.length,
-    customers: customers.length,
-    insights: insights.length,
-  };
-
-  const reportText = `BUSINESS REPORT CONTEXT
-=======================
-
-DATA SOURCE: Raw business records are the source of truth. Saved insights are optional background context only. If saved insights conflict with raw records, ignore saved insights.
-
-DATA AVAILABILITY:
-- Sales records: ${datasetCounts.sales}
-- Expense records: ${datasetCounts.expenses}
-- Inventory records: ${datasetCounts.inventory}
-- Customer records: ${datasetCounts.customers}
-- Saved AI insights: ${datasetCounts.insights}
-
-SALES SUMMARY:
-- Total revenue: $${totalRevenue.toFixed(2)}
-- Sales records count: ${sales.length}
-- Top product examples: ${topProducts.length > 0 ? topProducts.join(", ") : "None"}
-- Categories: ${topCategories.length > 0 ? topCategories.join(", ") : "None"}
-
-EXPENSE SUMMARY:
-- Total expenses: $${totalExpenses.toFixed(2)}
-- Expense records count: ${expenses.length}
-
-INVENTORY SUMMARY:
-- Total inventory items: ${totalInventoryItems}
-- Low stock item count: ${lowStockItems.length}
-- Low stock examples: ${lowStockItems.slice(0, 5).join(", ") || "None"}
-
-CUSTOMER SUMMARY:
-- Customer records count: ${totalCustomers}
-- Average customer spend: $${averageCustomerSpend.toFixed(2)}
-
-SAVED INSIGHTS (optional background):
-${insights.length > 0
-    ? insights
-        .map(
-          (insight) =>
-            `- [${new Date(insight.created_at).toISOString()}] ${insight.title}: ${insight.insight} (Severity: ${insight.severity})`
-        )
-        .join("\n")
-    : "No saved insights available."}
-
-LIMITATIONS:
-- If a dataset is missing, state that analysis is limited until it is uploaded.
-- Do not invent any numbers beyond those given here.
-`.trim();
-
-  return { reportText, datasetCounts };
-}
-
-export async function POST(request: Request) {
+export async function POST(_request: Request) {
+  console.log("[ai-report] route started");
   try {
     const supabase = await createClient();
     const {
       data: { user },
-      error: authError,
     } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: business, error: businessError } = await supabase
+    const { data: business } = await supabase
       .from("businesses")
       .select("id")
       .eq("owner_id", user.id)
       .maybeSingle();
 
-    if (businessError || !business) {
-      return NextResponse.json({ error: "Business not found" }, { status: 400 });
+    if (!business) {
+      return NextResponse.json({ success: false, error: "Business not found" }, { status: 400 });
     }
 
-    const payload = await request.json().catch(() => ({}));
-    const scope = parseScope(payload.scope);
+    console.log("[ai-report] business id:", business.id);
 
-    console.log("Scope received:", scope);
+    const [salesRes, expenseRes, inventoryRes, customerRes] = await Promise.all([
+      supabase
+        .from("sales_records")
+        .select("product_name, category, revenue, sale_date")
+        .eq("business_id", business.id)
+        .limit(100),
+      supabase
+        .from("expense_records")
+        .select("amount, category, expense_date")
+        .eq("business_id", business.id)
+        .limit(100),
+      supabase
+        .from("inventory_records")
+        .select("item_name, stock, reorder_level, unit_cost")
+        .eq("business_id", business.id)
+        .limit(100),
+      supabase
+        .from("customer_records")
+        .select("customer_name, total_spent")
+        .eq("business_id", business.id)
+        .limit(100),
+    ]);
 
-    const { reportText, datasetCounts } = await buildReportContext(business.id, supabase, scope);
+    const sales = Array.isArray(salesRes.data) ? salesRes.data : [];
+    const expenses = Array.isArray(expenseRes.data) ? expenseRes.data : [];
+    const inventory = Array.isArray(inventoryRes.data) ? inventoryRes.data : [];
+    const customers = Array.isArray(customerRes.data) ? customerRes.data : [];
 
-    console.log("Filtered row counts:", {
-      sales: datasetCounts.sales,
-      expenses: datasetCounts.expenses,
-      inventory: datasetCounts.inventory,
-      customers: datasetCounts.customers,
+    console.log("[ai-report] row counts:", {
+      sales: sales.length,
+      expenses: expenses.length,
+      inventory: inventory.length,
+      customers: customers.length,
     });
 
-    const hasSourceData =
-      datasetCounts.sales > 0 ||
-      datasetCounts.expenses > 0 ||
-      datasetCounts.inventory > 0 ||
-      datasetCounts.customers > 0;
-
-    if (!hasSourceData) {
-      return NextResponse.json({ error: "No records found for this selected file or date range." }, { status: 400 });
-    }
-    const prompt = `${reportText}
-
-REPORT SCOPE: ${getScopeDescription(scope)}
-
-Generate a professional business report with the following sections:
-- Executive Summary
-- Revenue Analysis
-- Expense Analysis
-- Inventory Analysis
-- Customer Analysis
-- Risks
-- Recommendations
-
-Return the report as a clear text document with each section labeled.
-`;
-
-    const response = await client.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              text: prompt,
-            },
-          ],
-        },
-      ],
-    });
-
-    const reportBody = response.text?.trim();
-    if (!reportBody) {
-      return NextResponse.json({ error: "AI report generation failed." }, { status: 500 });
+    if (sales.length === 0 && expenses.length === 0 && inventory.length === 0 && customers.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "No business records uploaded yet. Upload data first to generate a report." },
+        { status: 400 }
+      );
     }
 
-    const { data: insertedReport, error: insertError } = await supabase
-      .from("reports")
-      .insert({
+    const totalRevenue = sales.reduce((s, r) => s + Number(r.revenue ?? 0), 0);
+    const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount ?? 0), 0);
+    const lowStock = inventory.filter((i) => Number(i.stock ?? 0) <= Number(i.reorder_level ?? 0));
+
+    // Top products by revenue
+    const productRevenue: Record<string, number> = {};
+    for (const r of sales) {
+      const p = String(r.product_name ?? "Unknown");
+      productRevenue[p] = (productRevenue[p] ?? 0) + Number(r.revenue ?? 0);
+    }
+    const topProducts = Object.entries(productRevenue)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    const missingNote = [
+      sales.length === 0 && "No sales records uploaded.",
+      expenses.length === 0 && "No expense records uploaded.",
+      inventory.length === 0 && "No inventory records uploaded.",
+      customers.length === 0 && "No customer records uploaded.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const prompt = `Generate a professional business report from the real data below.
+
+DATA:
+- Sales: ${sales.length} records — Revenue: $${totalRevenue.toFixed(2)}
+- Expenses: ${expenses.length} records — Total: $${totalExpenses.toFixed(2)}
+- Profit: $${(totalRevenue - totalExpenses).toFixed(2)}
+- Inventory: ${inventory.length} items — Low stock: ${lowStock.length}
+- Customers: ${customers.length} records
+${topProducts.length > 0 ? `- Top products: ${topProducts.map(([n, r]) => `${n} ($${r.toFixed(2)})`).join(", ")}` : ""}
+${lowStock.length > 0 ? `- Low stock: ${lowStock.map((i) => i.item_name).join(", ")}` : ""}
+${missingNote ? `\nDATA GAPS: ${missingNote}` : ""}
+
+Write a report with these sections (each on its own line):
+Executive Summary
+Revenue Analysis
+Expense Analysis
+Inventory Analysis
+Customer Analysis
+Risks
+Recommendations
+
+Plain text only. No JSON, no code blocks. For any missing dataset, note the limitation in that section.`;
+
+    const text = await generateAIText(prompt);
+
+    // Save to DB (non-critical — if the table or schema doesn't match, we still return the report)
+    try {
+      await supabase.from("reports").insert({
         business_id: business.id,
         title: "AI Business Report",
-        description: "Comprehensive report generated from your real business records.",
+        description: "Generated from real business records.",
         type: "sales",
         status: "ready",
-        content: reportBody,
-      })
-      .select("id, title, description, type, status, content, created_at")
-      .single();
-
-    if (insertError || !insertedReport) {
-      console.error("Failed to save report:", insertError);
-      return NextResponse.json({ error: "Failed to save generated report." }, { status: 500 });
+        content: text,
+      });
+    } catch (err) {
+      console.error("[ai-report] Failed to save to DB:", err);
     }
 
-    return NextResponse.json({
-      success: true,
-      report: {
-        id: insertedReport.id,
-        title: insertedReport.title,
-        description: insertedReport.description,
-        type: insertedReport.type,
-        status: insertedReport.status,
-        content: insertedReport.content,
-        generatedAt: insertedReport.created_at,
-      },
-    });
+    return NextResponse.json({ success: true, text });
   } catch (error) {
-    console.error("AI report error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("[ai-report] error:", error);
+    return NextResponse.json(
+      { success: false, error: "Report generation failed. Please try again." },
+      { status: 500 }
+    );
   }
 }

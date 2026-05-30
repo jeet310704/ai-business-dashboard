@@ -229,16 +229,9 @@ export function DataScopeFilter({
             Reset filters
           </Button>
 
-          <button
-  type="button"
-  onClick={() => {
-    alert("Apply clicked");
-    handleApply();
-  }}
-  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
->
-  Apply Scope
-</button>
+          <Button type="button" onClick={handleApply}>
+            Apply scope
+          </Button>
         </div>
       </CardContent>
     </Card>

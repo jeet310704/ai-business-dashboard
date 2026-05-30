@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ReportCard } from "@/components/reports/report-card";
 import ReportsClient from "@/components/reports/ReportsClient";
+import { DownloadReportButton } from "@/components/reports/download-report-button";
 import { DashboardShell } from "@/components/layout/dashboard-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatNumber } from "@/lib/utils";
@@ -143,33 +144,45 @@ export default async function ReportsPage() {
     {
       id: "sales-summary",
       title: "Sales Summary Report",
-      description: `Revenue overview from ${formatNumber(sales.length)} sales records.`,
+      description:
+        sales.length > 0
+          ? `Revenue overview from ${formatNumber(sales.length)} sales records.`
+          : "No sales records uploaded yet. Upload a sales CSV to enable this report.",
       type: "sales" as const,
-      status: sales.length > 0 ? "ready" as const : "scheduled" as const,
+      status: sales.length > 0 ? ("ready" as const) : ("scheduled" as const),
       period: "Latest sales uploads",
     },
     {
       id: "expense-summary",
       title: "Expense Summary Report",
-      description: `Expense overview from ${formatNumber(expenses.length)} uploaded records.`,
+      description:
+        expenses.length > 0
+          ? `Expense overview from ${formatNumber(expenses.length)} uploaded records.`
+          : "No expense records uploaded yet. Upload an expense CSV to enable this report.",
       type: "expense" as const,
-      status: expenses.length > 0 ? "ready" as const : "scheduled" as const,
+      status: expenses.length > 0 ? ("ready" as const) : ("scheduled" as const),
       period: "Latest expense uploads",
     },
     {
       id: "inventory-health",
       title: "Inventory Health Report",
-      description: `Stock status from ${formatNumber(totalInventoryItems)} inventory records.`,
+      description:
+        inventory.length > 0
+          ? `Stock status from ${formatNumber(totalInventoryItems)} inventory records.`
+          : "No inventory records uploaded yet. Upload an inventory CSV to enable this report.",
       type: "inventory" as const,
-      status: inventory.length > 0 ? "ready" as const : "scheduled" as const,
+      status: inventory.length > 0 ? ("ready" as const) : ("scheduled" as const),
       period: "Latest inventory uploads",
     },
     {
       id: "customer-insights",
       title: "Customer Summary Report",
-      description: `Customer spend and engagement from ${formatNumber(totalCustomers)} uploaded customers.`,
+      description:
+        customers.length > 0
+          ? `Customer spend and engagement from ${formatNumber(totalCustomers)} uploaded customers.`
+          : "No customer records uploaded yet. Upload a customer CSV to enable this report.",
       type: "customer" as const,
-      status: customers.length > 0 ? "ready" as const : "scheduled" as const,
+      status: customers.length > 0 ? ("ready" as const) : ("scheduled" as const),
       period: "Latest customer uploads",
     },
   ];
@@ -267,8 +280,18 @@ export default async function ReportsPage() {
           {latestReport ? (
             <Card className="border-border/60 bg-muted/20">
               <CardHeader>
-                <CardTitle>{latestReport.title}</CardTitle>
-                <CardDescription>{latestReport.description}</CardDescription>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <CardTitle>{latestReport.title}</CardTitle>
+                    <CardDescription>{latestReport.description}</CardDescription>
+                  </div>
+                  {latestReport.content && (
+                    <DownloadReportButton
+                      content={latestReport.content}
+                      filename={`business-report-${new Date(latestReport.created_at).toISOString().slice(0, 10)}.txt`}
+                    />
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-6">
                 {latestReportSections.map((section) => (
@@ -302,10 +325,16 @@ export default async function ReportsPage() {
                       <CardTitle>{report.title}</CardTitle>
                       <CardDescription>{report.description}</CardDescription>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="flex items-center justify-between gap-4">
                       <p className="text-sm text-muted-foreground">
                         Generated {new Date(report.created_at).toLocaleDateString()}
                       </p>
+                      {report.content && (
+                        <DownloadReportButton
+                          content={report.content}
+                          filename={`business-report-${new Date(report.created_at).toISOString().slice(0, 10)}.txt`}
+                        />
+                      )}
                     </CardContent>
                   </Card>
                 ))}
